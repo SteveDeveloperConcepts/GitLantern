@@ -1,7 +1,18 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { credentialOrigin, parseRemoteUrl, repoNameFromUrl } from '../../shared/remoteUrl'
-import type { Branch, CloneProgress, Commit, CommitDetail, ConnectionTest, DiffTarget, RepoStatus } from '../../shared/types'
+import type {
+  Branch,
+  BranchComparison,
+  CloneProgress,
+  Commit,
+  CommitDetail,
+  ConnectionTest,
+  DiffTarget,
+  OperationResult,
+  RepoOperation,
+  RepoStatus
+} from '../../shared/types'
 import {
   BRANCH_FORMAT,
   DETAIL_FORMAT,
@@ -59,6 +70,16 @@ function assertHash(hash: string): void {
   if (!HASH.test(hash)) throw new Error(`Invalid commit hash: ${hash}`)
 }
 
+/** A branch name or commit hash from the UI. Rejects anything git could read as an option or a range. */
+function assertRevision(ref: string): void {
+  if (!ref || ref.startsWith('-') || ref.includes('..') || /[\s~^:?*[\\\x00-\x1f\x7f]/.test(ref)) {
+    throw new Error(`Not a branch or commit: ${ref}`)
+  }
+}
+
+/** Accept git's prepared commit messages instead of opening an editor, which would wait forever. */
+const NO_EDITOR = { GIT_EDITOR: 'true' }
+
 /** Paths go to git on stdin (NUL-separated), which avoids Windows' command-line length limit. */
 function pathspecStdin(paths: string[]): { args: string[]; stdin: string } {
   return { args: ['--pathspec-from-file=-', '--pathspec-file-nul'], stdin: paths.join('\0') }
@@ -75,12 +96,132 @@ export async function getRepoRoot(dir: string): Promise<string> {
 }
 
 export async function status(repo: string): Promise<RepoStatus> {
-  const { stdout } = await runGit(['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all'], {
-    cwd: repo,
-    // Background status must not take index.lock or rewrite the index (that would retrigger the watcher).
-    env: { GIT_OPTIONAL_LOCKS: '0' }
-  })
-  return parseStatus(stdout)
+  const [{ stdout }, current] = await Promise.all([
+    runGit(['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all'], {
+      cwd: repo,
+      // Background status must not take index.lock or rewrite the index (that would retrigger the watcher).
+      env: { GIT_OPTIONAL_LOCKS: '0' }
+    }),
+    operation(repo)
+  ])
+  const result = parseStatus(stdout)
+  return current ? { ...result, operation: current } : result
+}
+
+const OPERATION_FILES = ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD'] as const
+
+async function readState(file: string): Promise<string | null> {
+  try {
+    return (await fs.readFile(file, 'utf8')).trim()
+  } catch {
+    return null
+  }
+}
+
+/** The merge, rebase, cherry-pick or revert waiting to be finished, read from git's state files. */
+export async function operation(repo: string): Promise<RepoOperation | null> {
+  const { stdout } = await runGit(['rev-parse', ...OPERATION_FILES.flatMap((name) => ['--git-path', name])], { cwd: repo })
+  const lines = stdout.split('\n')
+  const gitPath = (name: (typeof OPERATION_FILES)[number]): string =>
+    path.resolve(repo, lines[OPERATION_FILES.indexOf(name)]?.trim() ?? '')
+
+  // The merge backend keeps its state in rebase-merge/, the older apply backend in rebase-apply/.
+  const backends = [
+    ['rebase-merge', 'msgnum', 'end'],
+    ['rebase-apply', 'next', 'last']
+  ] as const
+  for (const [dir, stepFile, totalFile] of backends) {
+    const state = (file: string): Promise<string | null> => readState(path.join(gitPath(dir), file))
+    const headName = await state('head-name')
+    if (headName === null) continue
+    const [onto, step, total] = await Promise.all([state('onto'), state(stepFile), state(totalFile)])
+    return {
+      kind: 'rebase',
+      ...(headName.startsWith('refs/heads/') ? { branch: headName.slice('refs/heads/'.length) } : {}),
+      ...(onto ? { onto } : {}),
+      ...(step && total ? { step: Number(step), total: Number(total) } : {})
+    }
+  }
+  const mergeHead = await readState(gitPath('MERGE_HEAD'))
+  if (mergeHead !== null) {
+    // One line per merged commit; an octopus merge has several.
+    const incoming = mergeHead.split('\n')[0]
+    return { kind: 'merge', ...(incoming ? { incoming } : {}) }
+  }
+  if ((await readState(gitPath('CHERRY_PICK_HEAD'))) !== null) return { kind: 'cherry-pick' }
+  if ((await readState(gitPath('REVERT_HEAD'))) !== null) return { kind: 'revert' }
+  return null
+}
+
+/**
+ * Run a command that can stop on conflicts. Stopping there leaves the operation in progress for the
+ * user to resolve, so it isn't an error; any other failure is.
+ */
+async function untilConflict(repo: string, command: () => Promise<unknown>): Promise<OperationResult> {
+  try {
+    await command()
+    return { conflicted: false }
+  } catch (error) {
+    if (error instanceof GitError && (await operation(repo))) {
+      const { stdout } = await runGit(['ls-files', '--unmerged'], { cwd: repo })
+      if (stdout.trim()) return { conflicted: true }
+    }
+    throw error
+  }
+}
+
+/** Compare the current branch with another branch or commit. */
+export async function compare(repo: string, ref: string): Promise<BranchComparison> {
+  assertRevision(ref)
+  const { stdout } = await runGit(['rev-list', '--left-right', '--count', `HEAD...${ref}`, '--'], { cwd: repo })
+  const [ahead = 0, behind = 0] = stdout.trim().split(/\s+/).map(Number)
+  let published = 0
+  if (ahead > 0) {
+    // Exit 128: no upstream (or a detached HEAD), so nothing has been pushed.
+    const upstream = await runGit(['rev-parse', '--verify', '--quiet', '@{upstream}'], { cwd: repo, allowedExitCodes: [0, 1, 128] })
+    if (upstream.exitCode === 0) {
+      const { stdout: unpublished } = await runGit(['rev-list', '--count', 'HEAD', `^${ref}`, `^${upstream.stdout.trim()}`, '--'], {
+        cwd: repo
+      })
+      published = ahead - Number(unpublished.trim())
+    }
+  }
+  return { ahead, behind, published }
+}
+
+/** Merge a branch or commit into the current branch (fast-forwarding when git can, unless told not to). */
+export async function merge(repo: string, ref: string, options: { noFastForward?: boolean } = {}): Promise<OperationResult> {
+  assertRevision(ref)
+  const args = ['merge', '--no-edit', ...(options.noFastForward ? ['--no-ff'] : []), ref]
+  return untilConflict(repo, () => runGit(args, { cwd: repo, env: NO_EDITOR }))
+}
+
+/** Replay the current branch's own commits on top of `onto`. */
+export async function rebase(repo: string, onto: string): Promise<OperationResult> {
+  assertRevision(onto)
+  return untilConflict(repo, () => runGit(['rebase', onto], { cwd: repo, env: NO_EDITOR }))
+}
+
+async function currentOperation(repo: string): Promise<RepoOperation> {
+  const current = await operation(repo)
+  if (!current) throw new Error('No merge or rebase is in progress')
+  return current
+}
+
+export async function continueOperation(repo: string): Promise<OperationResult> {
+  const { kind } = await currentOperation(repo)
+  return untilConflict(repo, () => runGit([kind, '--continue'], { cwd: repo, env: NO_EDITOR }))
+}
+
+export async function skipOperation(repo: string): Promise<OperationResult> {
+  const { kind } = await currentOperation(repo)
+  if (kind === 'merge') throw new Error('A merge has no commit to skip')
+  return untilConflict(repo, () => runGit([kind, '--skip'], { cwd: repo, env: NO_EDITOR }))
+}
+
+export async function abortOperation(repo: string): Promise<void> {
+  const { kind } = await currentOperation(repo)
+  await runGit([kind, '--abort'], { cwd: repo })
 }
 
 export async function log(repo: string, maxCount = 2000): Promise<Commit[]> {
@@ -143,8 +284,8 @@ function truncate(text: string): string {
   return text.length > MAX_DIFF_BYTES ? `${text.slice(0, MAX_DIFF_BYTES)}\n\n… diff truncated …` : text
 }
 
-/** Untracked files have no diff in git's eyes, so build an "all lines added" one. */
-async function untrackedDiff(repo: string, relPath: string): Promise<string> {
+/** Read up to MAX_DIFF_BYTES of a working-tree file inside the repository; null for a binary file. */
+async function readWorktreeFile(repo: string, relPath: string): Promise<string | null> {
   const absolute = path.resolve(repo, relPath)
   const relative = path.relative(repo, absolute)
   if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Path is outside the repository')
@@ -154,22 +295,28 @@ async function untrackedDiff(repo: string, relPath: string): Promise<string> {
     const { size } = await handle.stat()
     const buffer = Buffer.alloc(Math.min(size, MAX_DIFF_BYTES))
     await handle.read(buffer, 0, buffer.length, 0)
-    if (buffer.subarray(0, 8000).includes(0)) return `Binary file ${relPath} (untracked)`
-    const lines = buffer.toString('utf8').split(/\r?\n/)
-    if (lines.at(-1) === '') lines.pop()
-    return truncate(
-      [
-        `diff --git a/${relPath} b/${relPath}`,
-        'new file (untracked)',
-        '--- /dev/null',
-        `+++ b/${relPath}`,
-        `@@ -0,0 +1,${lines.length} @@`,
-        ...lines.map((line) => `+${line}`)
-      ].join('\n')
-    )
+    return buffer.subarray(0, 8000).includes(0) ? null : buffer.toString('utf8')
   } finally {
     await handle.close()
   }
+}
+
+/** Untracked files have no diff in git's eyes, so build an "all lines added" one. */
+async function untrackedDiff(repo: string, relPath: string): Promise<string> {
+  const text = await readWorktreeFile(repo, relPath)
+  if (text === null) return `Binary file ${relPath} (untracked)`
+  const lines = text.split(/\r?\n/)
+  if (lines.at(-1) === '') lines.pop()
+  return truncate(
+    [
+      `diff --git a/${relPath} b/${relPath}`,
+      'new file (untracked)',
+      '--- /dev/null',
+      `+++ b/${relPath}`,
+      `@@ -0,0 +1,${lines.length} @@`,
+      ...lines.map((line) => `+${line}`)
+    ].join('\n')
+  )
 }
 
 export async function diff(repo: string, target: DiffTarget): Promise<string> {
@@ -178,6 +325,8 @@ export async function diff(repo: string, target: DiffTarget): Promise<string> {
   switch (target.kind) {
     case 'worktree': {
       if (target.untracked) return untrackedDiff(repo, target.path)
+      // git's combined diff of a conflicted file is hard to read; the file with its markers is clearer.
+      if (target.conflicted) return (await readWorktreeFile(repo, target.path)) ?? `Binary file ${target.path}`
       const { stdout } = await runGit(['diff', ...common, '--', target.path], options)
       return truncate(stdout)
     }
@@ -238,6 +387,7 @@ export async function createBranch(repo: string, name: string, startPoint?: stri
   } catch {
     throw new Error(`"${name}" is not a valid branch name`)
   }
+  if (startPoint) assertRevision(startPoint)
   await runGit(['switch', '-c', name, ...(startPoint ? [startPoint] : [])], { cwd: repo })
 }
 

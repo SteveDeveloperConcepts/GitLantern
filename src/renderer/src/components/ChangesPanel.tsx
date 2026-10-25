@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { DiffTarget, RepoStatus, StatusEntry } from '../../../shared/types'
+import { OPERATION_NAMES } from '../branchMenus'
 import { FileList, type FileListItem } from './FileList'
 
 interface Props {
@@ -35,6 +36,7 @@ export function ChangesPanel({ status, busy, openTarget, onOpenDiff, onStage, on
   const unstaged = status.entries.filter((e) => e.untracked || e.conflicted || e.worktree !== null)
   const staged = status.entries.filter((e) => !e.conflicted && e.index !== null)
   const untracked = new Set(unstaged.filter((e) => e.untracked).map((e) => e.path))
+  const conflicted = new Set(unstaged.filter((e) => e.conflicted).map((e) => e.path))
   const canCommit = !busy && staged.length > 0 && summary.trim().length > 0
   const selectedKey = openTarget && openTarget.kind !== 'commit' ? `${openTarget.kind}:${openTarget.path}` : null
   const branchName = status.branch.head ?? 'detached HEAD'
@@ -67,7 +69,14 @@ export function ChangesPanel({ status, busy, openTarget, onOpenDiff, onStage, on
             <FileList
               items={unstaged.map(unstagedItem)}
               selectedKey={selectedKey}
-              onOpen={(item) => onOpenDiff({ kind: 'worktree', path: item.path, untracked: untracked.has(item.path) })}
+              onOpen={(item) =>
+                onOpenDiff({
+                  kind: 'worktree',
+                  path: item.path,
+                  untracked: untracked.has(item.path),
+                  conflicted: conflicted.has(item.path)
+                })
+              }
               action={{ label: '+', title: 'Stage', run: (item) => onStage([item.path]) }}
             />
           </section>
@@ -90,43 +99,51 @@ export function ChangesPanel({ status, busy, openTarget, onOpenDiff, onStage, on
         )}
       </div>
 
-      <form
-        className="commit-form"
-        onSubmit={(event) => {
-          event.preventDefault()
-          commit()
-        }}
-      >
-        <label htmlFor="commit-summary" className="field-label">
-          Commit message
-        </label>
-        <input
-          id="commit-summary"
-          value={summary}
-          onChange={(event) => setSummary(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) commit()
+      {status.operation ? (
+        <div className="commit-form operation-note">
+          {status.operation.kind === 'merge'
+            ? 'Stage the files once their conflicts are fixed, then click Finish merge at the top to commit the merge.'
+            : `Stage the files once their conflicts are fixed, then click Continue at the top to go on with the ${OPERATION_NAMES[status.operation.kind]}.`}
+        </div>
+      ) : (
+        <form
+          className="commit-form"
+          onSubmit={(event) => {
+            event.preventDefault()
+            commit()
           }}
-          placeholder="Summary (required)"
-          maxLength={200}
-        />
-        <textarea
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) commit()
-          }}
-          placeholder="Description (optional)"
-          rows={3}
-          aria-label="Commit description"
-        />
-        <button type="submit" className="primary large" disabled={!canCommit}>
-          {staged.length > 0
-            ? `Commit ${staged.length} file${staged.length === 1 ? '' : 's'} to ${branchName}`
-            : 'Stage files to commit'}
-        </button>
-        <span className="hint center">Ctrl / ⌘ + Enter</span>
-      </form>
+        >
+          <label htmlFor="commit-summary" className="field-label">
+            Commit message
+          </label>
+          <input
+            id="commit-summary"
+            value={summary}
+            onChange={(event) => setSummary(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) commit()
+            }}
+            placeholder="Summary (required)"
+            maxLength={200}
+          />
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) commit()
+            }}
+            placeholder="Description (optional)"
+            rows={3}
+            aria-label="Commit description"
+          />
+          <button type="submit" className="primary large" disabled={!canCommit}>
+            {staged.length > 0
+              ? `Commit ${staged.length} file${staged.length === 1 ? '' : 's'} to ${branchName}`
+              : 'Stage files to commit'}
+          </button>
+          <span className="hint center">Ctrl / ⌘ + Enter</span>
+        </form>
+      )}
     </div>
   )
 }

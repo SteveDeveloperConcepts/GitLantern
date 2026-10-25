@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react'
-import type { Branch, Commit, DiffTarget, RepoInfo } from '../../shared/types'
+import type { Branch, Commit, DiffTarget, OperationResult, RefKind, RepoInfo } from '../../shared/types'
+import {
+  branchesForRefs,
+  commitMenu,
+  type IntegrateKind,
+  type MenuActions,
+  type MenuContext,
+  type RefTarget
+} from './branchMenus'
 import { AskPassDialog } from './components/AskPassDialog'
 import { BranchesPanel } from './components/BranchesPanel'
 import { ChangesPanel } from './components/ChangesPanel'
@@ -9,6 +17,9 @@ import { ConnectionsDialog } from './components/ConnectionsDialog'
 import { DiffView } from './components/DiffView'
 import { Errors, type AppError } from './components/Errors'
 import { Icon } from './components/Icon'
+import { IntegrateDialog } from './components/IntegrateDialog'
+import { ContextMenu, type MenuItem } from './components/Menu'
+import { OperationBanner } from './components/OperationBanner'
 import { PromptDialog } from './components/PromptDialog'
 import { RemotesPanel } from './components/RemotesPanel'
 import { StatusBar } from './components/StatusBar'
@@ -17,6 +28,7 @@ import { WelcomeScreen } from './components/WelcomeScreen'
 import { errorMessage } from './format'
 import { CommitGraph, WORKING_COPY } from './graph/CommitGraph'
 import { layoutGraph } from './graph/layout'
+import { refPills } from './graph/refs'
 import { useRepo } from './useRepo'
 
 const api = window.api
@@ -36,6 +48,11 @@ export function App() {
   const [errors, setErrors] = useState<AppError[]>([])
   const [dialog, setDialog] = useState<Dialog>(null)
   const [accountCount, setAccountCount] = useState(0)
+  /** Where "New branch" starts from; null for the checked-out commit. */
+  const [branchFrom, setBranchFrom] = useState<RefTarget | null>(null)
+  const [integrate, setIntegrate] = useState<{ kind: IntegrateKind; target: RefTarget } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; groups: MenuItem[][] } | null>(null)
+  const closeContextMenu = useCallback(() => setContextMenu(null), [])
   const { status, commits, branches, remotes, error, refresh } = useRepo(repo)
 
   const reloadAccounts = useCallback(() => void api.accounts.list().then((list) => setAccountCount(list.length)), [])
@@ -71,6 +88,8 @@ export function App() {
     setSelectedHash(null)
     setDiffTarget(null)
     setLastSync(null)
+    setIntegrate(null)
+    setContextMenu(null)
     setMessage(`Opened ${info.name}`)
   }, [])
 
@@ -99,15 +118,52 @@ export function App() {
       } catch (err) {
         reportError(errorMessage(err))
       } finally {
-        setBusy(null)
+        // Stay busy until the new state is loaded, so menus and buttons never act on the old one.
         await refresh()
+        setBusy(null)
       }
     },
     [repo, refresh, reportError]
   )
 
+  /** Like `run`, for commands that can stop on conflicts: those open the Changes tab instead of reporting success. */
+  const runOperation = (label: string, action: (repoPath: string) => Promise<OperationResult>, success: string) =>
+    run(label, async (repoPath) => {
+      const { conflicted } = await action(repoPath)
+      setMessage(conflicted ? 'Stopped on conflicts. Resolve them, then continue.' : success)
+      if (conflicted) setTab('changes')
+    })
+
   const checkout = (branch: Branch) =>
     run(`Checking out ${branch.name}`, (path) => api.git.checkout(path, branch), `Checked out ${branch.name}`)
+
+  const menuContext: MenuContext = {
+    current: status?.branch.head ?? null,
+    headHash: status?.branch.oid ?? null,
+    operation: status?.operation
+  }
+  const menuActions: MenuActions = {
+    checkout: (branch) => void checkout(branch),
+    integrate: (kind, target) => setIntegrate({ kind, target }),
+    createBranchAt: (target) => {
+      setBranchFrom(target)
+      setDialog('new-branch')
+    },
+    copyHash: (hash) =>
+      void api.clipboard.write(hash).then(
+        () => setMessage(`Copied ${hash.slice(0, 7)}`),
+        (err: unknown) => reportError(errorMessage(err))
+      )
+  }
+
+  const openCommitMenu = (commit: Commit, ref: { name: string; kind: RefKind } | null, position: { x: number; y: number }) => {
+    selectCommit(commit.hash)
+    // A label that stands for a local branch and its remote twin offers the local branch only.
+    const labels = ref ? [ref] : refPills(commit.refs).map((pill) => ({ name: pill.label, kind: pill.kind }))
+    setContextMenu({ ...position, groups: commitMenu(commit.hash, branchesForRefs(labels, branches), menuContext, menuActions) })
+  }
+  const openBranchMenu = (branch: Branch, position: { x: number; y: number }) =>
+    setContextMenu({ ...position, groups: commitMenu(branch.hash, [branch], menuContext, menuActions) })
 
   const selectCommit = (hash: string | null) => {
     if (hash === WORKING_COPY) {
@@ -145,13 +201,37 @@ export function App() {
       {dialog === 'new-branch' && (
         <PromptDialog
           title="New branch"
-          label={`Branch off ${status?.branch.head ?? 'HEAD'} and switch to it.`}
+          label={`Branch off ${branchFrom?.label ?? status?.branch.head ?? 'HEAD'} and switch to it.`}
           placeholder="feature/my-change"
           confirm="Create and switch"
           onCancel={() => setDialog(null)}
           onSubmit={(name) => {
             setDialog(null)
-            void run('Creating branch', (path) => api.git.createBranch(path, name), `Switched to new branch ${name}`)
+            const startPoint = branchFrom?.ref
+            void run('Creating branch', (path) => api.git.createBranch(path, name, startPoint), `Switched to new branch ${name}`)
+          }}
+        />
+      )}
+      {integrate && repo && status && (
+        <IntegrateDialog
+          kind={integrate.kind}
+          target={integrate.target}
+          current={status.branch.head ?? 'HEAD'}
+          upstream={status.branch.upstream}
+          repoPath={repo.path}
+          dirty={status.entries.some((e) => !e.untracked && (e.index !== null || e.worktree !== null))}
+          onCancel={() => setIntegrate(null)}
+          onConfirm={({ noFastForward }) => {
+            const { kind, target } = integrate
+            const current = status.branch.head ?? 'HEAD'
+            setIntegrate(null)
+            void (kind === 'merge'
+              ? runOperation(
+                  `Merging ${target.label}`,
+                  (path) => api.git.merge(path, target.ref, { noFastForward }),
+                  `Merged ${target.label} into ${current}`
+                )
+              : runOperation(`Rebasing onto ${target.label}`, (path) => api.git.rebase(path, target.ref), `Rebased ${current} onto ${target.label}`))
           }}
         />
       )}
@@ -176,6 +256,26 @@ export function App() {
   }
 
   const changeCount = status?.entries.length ?? 0
+  const operation = status?.operation
+  const operationBanner = operation && (
+    <OperationBanner
+      operation={operation}
+      current={status.branch.head}
+      conflicts={status.entries.filter((e) => e.conflicted).length}
+      branches={branches}
+      busy={busy !== null}
+      onShowChanges={() => setTab('changes')}
+      onContinue={() =>
+        runOperation(
+          `Continuing the ${operation.kind}`,
+          api.git.continueOperation,
+          operation.kind === 'merge' ? 'Merge committed' : `Finished the ${operation.kind}`
+        )
+      }
+      onSkip={() => runOperation('Skipping the commit', api.git.skipOperation, `Finished the ${operation.kind}`)}
+      onAbort={() => run(`Aborting the ${operation.kind}`, api.git.abortOperation, `Aborted the ${operation.kind}`)}
+    />
+  )
   const localCount = branches.filter((b) => b.kind === 'local').length
   const showDetail = selectedHash !== null || diffTarget !== null
   const tabs: { id: Tab; label: string; count: number }[] = [
@@ -196,13 +296,19 @@ export function App() {
         onOpenRecent={(path) => openRepo(() => api.repo.open(path))}
         onClone={() => setDialog('clone')}
         onCheckout={checkout}
-        onNewBranch={() => setDialog('new-branch')}
+        onNewBranch={() => {
+          setBranchFrom(null)
+          setDialog('new-branch')
+        }}
         onFetch={() => run('Fetching', api.git.fetch, 'Fetched all remotes', true)}
         onPull={() => run('Pulling', api.git.pull, 'Pulled (fast-forward)', true)}
         onPush={() => run('Pushing', api.git.push, 'Pushed', true)}
         onAccounts={() => setDialog('accounts')}
       />
-      {errorBanner}
+      <div className="notices">
+        {operationBanner}
+        {errorBanner}
+      </div>
       <div className="workspace">
         <aside className="left-panel">
           <div className="tabs" role="tablist" aria-label="Panels">
@@ -229,7 +335,12 @@ export function App() {
               />
             )}
             {tab === 'branches' && (
-              <BranchesPanel branches={branches} onCheckout={checkout} onSelect={(branch) => selectCommit(branch.hash)} />
+              <BranchesPanel
+                branches={branches}
+                onCheckout={checkout}
+                onSelect={(branch) => selectCommit(branch.hash)}
+                onContextMenu={openBranchMenu}
+              />
             )}
             {tab === 'remotes' && (
               <RemotesPanel
@@ -258,6 +369,7 @@ export function App() {
                   headHash={status?.branch.oid ?? null}
                   selectedHash={selectedHash}
                   onSelect={(hash) => selectCommit(hash === selectedHash ? null : hash)}
+                  onContextMenu={openCommitMenu}
                 />
               )
             }
@@ -292,6 +404,7 @@ export function App() {
       </div>
       <StatusBar status={status} remotes={remotes} busy={busy} message={message} lastSync={lastSync} />
       {dialogs}
+      {contextMenu && <ContextMenu {...contextMenu} onClose={closeContextMenu} />}
     </div>
   )
 }

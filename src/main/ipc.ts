@@ -50,7 +50,7 @@ function diffTarget(value: unknown): DiffTarget {
   const filePath = str(target?.path, 'path')
   switch (target?.kind) {
     case 'worktree':
-      return { kind: 'worktree', path: filePath, untracked: target.untracked === true }
+      return { kind: 'worktree', path: filePath, untracked: target.untracked === true, conflicted: target.conflicted === true }
     case 'index':
       return { kind: 'index', path: filePath }
     case 'commit':
@@ -220,6 +220,16 @@ export function registerIpc(ctx: Context): void {
   handle(Invoke.gitCreateBranch, (repo, name, startPoint) =>
     git.createBranch(knownRepo(repo), str(name, 'branch name'), startPoint === undefined ? undefined : str(startPoint, 'start point'))
   )
+  handle(Invoke.gitCompare, (repo, ref) => git.compare(knownRepo(repo), str(ref, 'branch or commit')))
+  handle(Invoke.gitMerge, (repo, ref, options) =>
+    git.merge(knownRepo(repo), str(ref, 'branch or commit'), {
+      noFastForward: (options as { noFastForward?: unknown } | null)?.noFastForward === true
+    })
+  )
+  handle(Invoke.gitRebase, (repo, onto) => git.rebase(knownRepo(repo), str(onto, 'branch or commit')))
+  handle(Invoke.gitContinue, (repo) => git.continueOperation(knownRepo(repo)))
+  handle(Invoke.gitSkip, (repo) => git.skipOperation(knownRepo(repo)))
+  handle(Invoke.gitAbort, (repo) => git.abortOperation(knownRepo(repo)))
   handle(Invoke.gitFetch, (repo) => git.fetch(knownRepo(repo)))
   handle(Invoke.gitPull, (repo) => git.pull(knownRepo(repo)))
   handle(Invoke.gitPush, (repo) => git.push(knownRepo(repo)))

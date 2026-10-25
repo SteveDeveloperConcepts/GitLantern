@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
-import type { Commit } from '../../../shared/types'
+import type { Commit, RefKind } from '../../../shared/types'
 import { Avatar } from '../components/Avatar'
 import { formatRelative } from '../format'
 import type { GraphLayout } from './layout'
@@ -26,13 +26,15 @@ interface Props {
   headHash: string | null
   selectedHash: string | null
   onSelect(hash: string): void
+  /** Right-click (or the menu key) on a commit; `ref` is set when it was on one of its labels. */
+  onContextMenu(commit: Commit, ref: { name: string; kind: RefKind } | null, position: { x: number; y: number }): void
 }
 
 /**
  * Virtualised commit list. Only visible rows are rendered. A canvas pinned to the viewport
  * draws the lanes for those rows and is redrawn on scroll.
  */
-export function CommitGraph({ commits, layout, headHash, selectedHash, onSelect }: Props) {
+export function CommitGraph({ commits, layout, headHash, selectedHash, onSelect, onContextMenu }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -119,7 +121,16 @@ export function CommitGraph({ commits, layout, headHash, selectedHash, onSelect 
     }
   }, [commits, layout, headHash, hasWorkingCopy, first, last, scrollTop, viewportHeight, graphWidth])
 
-  function moveSelection(event: KeyboardEvent<HTMLDivElement>): void {
+  function onKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
+    if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+      const commit = commits.find((c) => c.hash === selectedHash)
+      const row = scrollRef.current?.querySelector('.commit-row.selected')?.getBoundingClientRect()
+      if (commit && commit.hash !== WORKING_COPY && row) {
+        event.preventDefault()
+        onContextMenu(commit, null, { x: row.left + graphWidth, y: row.bottom })
+      }
+      return
+    }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
     event.preventDefault()
     const index = commits.findIndex((c) => c.hash === selectedHash)
@@ -150,7 +161,7 @@ export function CommitGraph({ commits, layout, headHash, selectedHash, onSelect 
         tabIndex={0}
         aria-label="Commit history"
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-        onKeyDown={moveSelection}
+        onKeyDown={onKeyDown}
       >
         <div className="graph-inner" style={{ height: commits.length * ROW_HEIGHT }}>
           <canvas ref={canvasRef} className="graph-canvas" style={{ width: graphWidth, height: viewportHeight }} />
@@ -163,10 +174,23 @@ export function CommitGraph({ commits, layout, headHash, selectedHash, onSelect 
                 className={`commit-row${commit.hash === selectedHash ? ' selected' : ''}${working ? ' working' : ''}`}
                 style={{ top: index * ROW_HEIGHT, height: ROW_HEIGHT, paddingLeft: graphWidth }}
                 onClick={() => onSelect(commit.hash)}
+                onContextMenu={(event) => {
+                  event.preventDefault()
+                  if (working) return
+                  const pill = (event.target as HTMLElement).closest<HTMLElement>('[data-ref-kind]')
+                  const ref = pill ? { name: pill.dataset.refName ?? '', kind: pill.dataset.refKind as RefKind } : null
+                  onContextMenu(commit, ref, { x: event.clientX, y: event.clientY })
+                }}
               >
                 <span className="col-subject">
                   {refPills(commit.refs).map((pill) => (
-                    <span key={pill.key} className={`ref ref-${pill.kind}${pill.isCurrent ? ' ref-current' : ''}`} title={pill.label}>
+                    <span
+                      key={pill.key}
+                      className={`ref ref-${pill.kind}${pill.isCurrent ? ' ref-current' : ''}`}
+                      title={pill.label}
+                      data-ref-name={pill.label}
+                      data-ref-kind={pill.kind}
+                    >
                       {pill.kind === 'tag' ? `# ${pill.label}` : pill.label}
                       {pill.remotes.length > 0 && <span className="ref-remotes"> · {pill.remotes.join(', ')}</span>}
                     </span>

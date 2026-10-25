@@ -29,6 +29,35 @@ export interface BranchStatus {
 export interface RepoStatus {
   branch: BranchStatus
   entries: StatusEntry[]
+  /** A merge, rebase, cherry-pick or revert that stopped (usually on conflicts) and waits to be finished. */
+  operation?: RepoOperation
+}
+
+export interface RepoOperation {
+  kind: 'merge' | 'rebase' | 'cherry-pick' | 'revert'
+  /** Merge: the commit being merged in. */
+  incoming?: string
+  /** Rebase: the branch being rebased, and the commit it's being rebased onto. */
+  branch?: string
+  onto?: string
+  /** Rebase: which commit is being replayed, out of how many. */
+  step?: number
+  total?: number
+}
+
+/** Outcome of a merge, rebase or continue: either done, or stopped with conflicts to resolve. */
+export interface OperationResult {
+  conflicted: boolean
+}
+
+/** The current branch compared with another branch or commit, for the merge and rebase dialogs. */
+export interface BranchComparison {
+  /** Commits on the current branch that the other one doesn't have. */
+  ahead: number
+  /** Commits on the other branch that the current one doesn't have. */
+  behind: number
+  /** How many of the `ahead` commits are already on the current branch's upstream. */
+  published: number
 }
 
 export type RefKind = 'head' | 'local' | 'remote' | 'tag'
@@ -150,7 +179,8 @@ export interface CloneProgress {
 }
 
 export type DiffTarget =
-  | { kind: 'worktree'; path: string; untracked?: boolean }
+  /** `conflicted`: show the file itself with its conflict markers instead of a diff. */
+  | { kind: 'worktree'; path: string; untracked?: boolean; conflicted?: boolean }
   | { kind: 'index'; path: string }
   | { kind: 'commit'; hash: string; path: string }
 
@@ -223,6 +253,16 @@ export interface GitSteveApi {
     commit(repo: string, message: string): Promise<void>
     checkout(repo: string, branch: Pick<Branch, 'name' | 'kind'>): Promise<void>
     createBranch(repo: string, name: string, startPoint?: string): Promise<void>
+    compare(repo: string, ref: string): Promise<BranchComparison>
+    /** Merge a branch or commit into the current branch. */
+    merge(repo: string, ref: string, options?: { noFastForward?: boolean }): Promise<OperationResult>
+    /** Replay the current branch's own commits on top of a branch or commit. */
+    rebase(repo: string, onto: string): Promise<OperationResult>
+    /** Finish the stopped merge, rebase, cherry-pick or revert once its conflicts are staged. */
+    continueOperation(repo: string): Promise<OperationResult>
+    /** Rebase, cherry-pick or revert only: drop the commit that conflicted and go on. */
+    skipOperation(repo: string): Promise<OperationResult>
+    abortOperation(repo: string): Promise<void>
     fetch(repo: string): Promise<void>
     pull(repo: string): Promise<void>
     push(repo: string): Promise<void>

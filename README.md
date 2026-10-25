@@ -27,6 +27,12 @@ managers keep working.
   write a summary plus an optional description.
 - **Branches:** switch from the branch menu in the top bar or double-click one on the Branches tab
   (remote branches get a local tracking branch), and create new branches.
+- **Merge and rebase:** right-click a branch or commit in the graph, or a branch on the Branches tab,
+  to merge it into your branch or rebase your branch onto it. A dialog first explains what will happen
+  (fast-forward, merge commit, how many commits get replayed, and whether any were already pushed).
+- **Conflicts:** when a merge or rebase stops on conflicts, a banner shows how far it got. Each
+  conflicted file opens with its two sides highlighted. Fix them in your editor, stage them, then
+  finish, skip the commit (rebase) or abort.
 - **Fetch, pull and push:** fetch all remotes, pull (fast-forward only, so no surprise merge commits)
   and push. The buttons show how many commits are waiting. A new branch's upstream is set on its first
   push.
@@ -138,6 +144,8 @@ Builds for the Microsoft Store and the Mac App Store are covered in [docs/RELEAS
    **Stage all**). Write a summary and click **Commit**, or press **Ctrl+Enter** (**⌘+Enter** on Mac).
 5. **Branches:** use the branch menu in the top bar, or the **Branches** tab: click a branch to jump to
    it in the graph, double-click to check it out. **Branch** creates one from where you are.
+   **Right-click** a branch label or commit in the graph (or a branch on the Branches tab) to merge,
+   rebase, check out, create a branch there or copy the commit hash.
 6. **Remotes:** the **Remotes** tab lists where this repository pushes and pulls. **Add remote**
    connects a new or empty repository to a service. **Test connection** checks the address first.
 7. **Sync:** use **Fetch**, **Pull** and **Push** in the top bar. The status bar at the bottom shows
@@ -194,13 +202,19 @@ helper) is handling sign-in, so you should see its window instead. Servers you c
 your Git Steve account instead.
 
 **Pull says it can't fast-forward**<br>
-Your branch and the remote have both moved on. Merge or rebase from a terminal for now. Built-in merge
-and rebase are on the roadmap.
+Your branch and the remote have both moved on. Click **Fetch**, then right-click the remote branch
+(for example `origin/main`) in the graph and choose **Merge** or **Rebase**.
+
+**I rebased and now Push is rejected**<br>
+Rebasing gave commits you had already pushed new IDs, so the remote branch has to be replaced. Git
+Steve can't force-push yet. From a terminal in the repository, run `git push --force-with-lease`.
+Only do that on a branch nobody else is working on.
 
 ## Roadmap
 
-- Stash, merge, rebase and cherry-pick
-- Resolving merge conflicts
+- Stash and cherry-pick
+- Force push (with lease) after a rebase
+- Picking a side for each conflict inside Git Steve
 - Discarding changes, and staging individual lines or hunks
 - Search and filtering in the history
 - Pull requests / merge requests from connected accounts

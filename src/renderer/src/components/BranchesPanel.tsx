@@ -8,6 +8,7 @@ interface Props {
   onCheckout(branch: Branch): void
   /** Single click: jump to the branch's commit in the graph. */
   onSelect(branch: Branch): void
+  onContextMenu(branch: Branch, position: { x: number; y: number }): void
 }
 
 function groupRemotes(branches: Branch[]): Map<string, Branch[]> {
@@ -20,13 +21,17 @@ function groupRemotes(branches: Branch[]): Map<string, Branch[]> {
   return groups
 }
 
-function BranchItem({ branch, label, onCheckout, onSelect }: { branch: Branch; label: string } & Omit<Props, 'branches'>) {
+function BranchItem({ branch, label, onCheckout, onSelect, onContextMenu }: { branch: Branch; label: string } & Omit<Props, 'branches'>) {
   return (
     <li
       className={`branch-item${branch.isCurrent ? ' current' : ''}`}
-      title={`${branch.name}${branch.upstream ? ` → ${branch.upstream}` : ''}\nDouble-click to check out`}
+      title={`${branch.name}${branch.upstream ? ` → ${branch.upstream}` : ''}\nDouble-click to check out, right-click to merge or rebase`}
       onClick={() => onSelect(branch)}
       onDoubleClick={() => onCheckout(branch)}
+      onContextMenu={(event) => {
+        event.preventDefault()
+        onContextMenu(branch, { x: event.clientX, y: event.clientY })
+      }}
     >
       <span className="branch-dot" aria-hidden="true" />
       {label}
@@ -34,7 +39,7 @@ function BranchItem({ branch, label, onCheckout, onSelect }: { branch: Branch; l
   )
 }
 
-export function BranchesPanel({ branches, onCheckout, onSelect }: Props) {
+export function BranchesPanel({ branches, onCheckout, onSelect, onContextMenu }: Props) {
   const local = branches.filter((b) => b.kind === 'local')
   const remotes = groupRemotes(branches)
 
@@ -44,7 +49,14 @@ export function BranchesPanel({ branches, onCheckout, onSelect }: Props) {
         <h3>Local · {local.length}</h3>
         <ul>
           {local.map((branch) => (
-            <BranchItem key={branch.fullName} branch={branch} label={branch.name} onCheckout={onCheckout} onSelect={onSelect} />
+            <BranchItem
+              key={branch.fullName}
+              branch={branch}
+              label={branch.name}
+              onCheckout={onCheckout}
+              onSelect={onSelect}
+              onContextMenu={onContextMenu}
+            />
           ))}
         </ul>
       </section>
@@ -61,12 +73,13 @@ export function BranchesPanel({ branches, onCheckout, onSelect }: Props) {
                 label={branch.name.slice(remote.length + 1)}
                 onCheckout={onCheckout}
                 onSelect={onSelect}
+                onContextMenu={onContextMenu}
               />
             ))}
           </ul>
         </section>
       ))}
-      <p className="hint">Double-click a branch to check it out.</p>
+      <p className="hint">Double-click a branch to check it out. Right-click to merge or rebase.</p>
       <SavedCredentials />
     </div>
   )

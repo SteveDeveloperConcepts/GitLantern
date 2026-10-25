@@ -43,6 +43,7 @@ src/
   shared/               types, IPC channel names, provider definitions (providers.ts) and
                         remote-address parsing/conversion (remoteUrl.ts), shared by every process
   renderer/             React UI
+    src/branchMenus.ts       right-click menu contents for branches and commits (pure, unit-tested)
     src/graph/layout.ts      lane-assignment algorithm for the commit graph (pure, unit-tested)
     src/graph/CommitGraph.tsx virtualised list plus a canvas that draws only the visible lanes
 test/                   integration tests against real temporary repositories
@@ -56,6 +57,14 @@ scripts/                store-build preflight check, icon generator
 **Git.** Every operation shells out to the `git` CLI with machine-readable flags (`--porcelain=v2 -z`,
 custom `--format` strings with NUL/0x1F separators) and parses the output. Background `status` runs with
 `GIT_OPTIONAL_LOCKS=0`, so it never takes the index lock or retriggers the file watcher.
+
+**Merge and rebase.** Right-click menus (`branchMenus.ts`) open a dialog that runs `git rev-list
+--left-right --count` first, to explain a fast-forward, a merge commit or the commits a rebase replays,
+and to warn when they're already on the upstream. `merge` and `rebase` run with `GIT_EDITOR=true`, so
+git never waits for an editor. A stop on conflicts returns `{ conflicted: true }` instead of an error.
+`status()` reads git's own state files (`MERGE_HEAD`, `rebase-merge/`, `rebase-apply/`,
+`CHERRY_PICK_HEAD`, `REVERT_HEAD`) on every refresh. That also picks up a merge or rebase started in a
+terminal, and the banner offers `--continue`, `--skip` and `--abort` for it.
 
 **Credentials.** Git and ssh are started with `GIT_ASKPASS` / `SSH_ASKPASS` pointing at a small
 trampoline (`askpass.cmd` on Windows, `askpass.sh` elsewhere) in the app's data folder. Packaged Windows
@@ -92,8 +101,9 @@ every IPC argument.
   self-contained.
 - Don't disable Electron's `RunAsNode` fuse: the askpass helper depends on it. Replacing the helper
   with a tiny native trampoline would remove that dependency.
-- Not built yet: stash, merge / rebase / cherry-pick UI, conflict resolution, discarding changes,
-  hunk/line staging, a search box, and a settings screen (`gitPath` in `settings.json` already works).
+- Not built yet: stash, cherry-pick, force push, an in-app conflict editor (conflicted files are shown
+  with their sides highlighted, but fixed in the user's editor), discarding changes, hunk/line staging,
+  a search box, and a settings screen (`gitPath` in `settings.json` already works).
 - Git services: tokens only (no OAuth browser sign-in yet). Repository lists show the first page
   (up to 100, 50 for Gitea). Bitbucket uses Atlassian API tokens with the fixed git username
   `x-bitbucket-api-token-auth`. None of the provider calls have been tried against live accounts yet:

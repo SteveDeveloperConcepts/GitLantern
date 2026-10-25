@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { DiffTarget } from '../../../shared/types'
-import { parseDiff, type DiffLine } from '../diff'
+import { parseConflicts, parseDiff, type DiffLine } from '../diff'
 import { errorMessage } from '../format'
 
 const api = window.api
@@ -12,9 +12,25 @@ interface Props {
 }
 
 const describe = (target: DiffTarget): string =>
-  target.kind === 'commit' ? `in ${target.hash.slice(0, 7)}` : target.kind === 'index' ? 'staged' : 'not staged'
+  target.kind === 'commit'
+    ? `in ${target.hash.slice(0, 7)}`
+    : target.kind === 'index'
+      ? 'staged'
+      : target.conflicted
+        ? 'with conflicts'
+        : 'not staged'
 
-const SIGN: Record<DiffLine['kind'], string> = { add: '+', del: '−', context: '', hunk: '', note: '' }
+const SIGN: Record<DiffLine['kind'], string> = {
+  add: '+',
+  del: '−',
+  context: '',
+  hunk: '',
+  note: '',
+  ours: '',
+  base: '',
+  theirs: '',
+  marker: ''
+}
 
 export function DiffView({ repoPath, target }: Props) {
   const [text, setText] = useState<string | null>(null)
@@ -33,7 +49,11 @@ export function DiffView({ repoPath, target }: Props) {
     }
   }, [repoPath, target])
 
-  const lines = useMemo(() => (text ? parseDiff(text) : []), [text])
+  const conflictView = target.kind === 'worktree' && target.conflicted === true
+  const { lines, conflicts } = useMemo(
+    () => (!text ? { lines: [], conflicts: 0 } : conflictView ? parseConflicts(text) : { lines: parseDiff(text), conflicts: 0 }),
+    [text, conflictView]
+  )
   const added = lines.filter((l) => l.kind === 'add').length
   const removed = lines.filter((l) => l.kind === 'del').length
 
@@ -42,11 +62,16 @@ export function DiffView({ repoPath, target }: Props) {
       <header className="diff-header">
         <span className="diff-path">{target.path}</span>
         <span className="diff-kind">{describe(target)}</span>
-        {lines.length > 0 && (
-          <span className="file-counts">
-            <span className="add">+{added}</span> <span className="del">−{removed}</span>
-          </span>
-        )}
+        {lines.length > 0 &&
+          (conflictView ? (
+            <span className="file-counts conflict-count">
+              {conflicts} conflict{conflicts === 1 ? '' : 's'}
+            </span>
+          ) : (
+            <span className="file-counts">
+              <span className="add">+{added}</span> <span className="del">−{removed}</span>
+            </span>
+          ))}
       </header>
       {error && <div className="panel-error">{error}</div>}
       {text === null && !error && <div className="panel-loading">Loading diff…</div>}
