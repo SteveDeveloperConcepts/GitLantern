@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "A cross-platform Git client for macOS and Windows",
   "author": "Steve Vaubell",
+  "license": "MIT",
   "private": true,
   "main": "./out/main/index.js",
   "packageManager": "yarn@1.22.22",

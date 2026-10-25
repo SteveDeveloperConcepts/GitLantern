@@ -221,5 +221,4 @@ yarn test
 
 ## License
 
-No license has been chosen yet, so all rights are reserved for now. A `LICENSE` file will be added
-before the first public release.
+Git Steve is released under the [MIT License](LICENSE). Copyright © 2026 Steve Vaubell.
