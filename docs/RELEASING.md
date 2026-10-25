@@ -5,8 +5,8 @@ or `corepack enable`), then run `yarn install` in the project folder.
 
 | Command | Builds | Run it on | Output in `dist/` |
 |---|---|---|---|
-| `yarn dist:win` | Windows installer to share directly (NSIS) | Windows | `Git Steve Setup <version>.exe` |
-| `yarn dist:mac` | macOS disk image to share directly | Mac | `Git Steve-<version>.dmg` |
+| `yarn dist:win` | Windows installer to share directly (NSIS) | Windows | `GitSteve-Setup-<version>.exe` |
+| `yarn dist:mac` | macOS disk image to share directly | Mac | `GitSteve-<version>-<arch>.dmg` |
 | `yarn dist:msstore` | **Microsoft Store** packages, x64 and ARM64 | Windows 10 / 11 | `Git Steve-<version>-x64.appx`, `…-arm64.appx` |
 | `yarn dist:msstore-test` | The Store package, installable on your own PC for testing | Windows 11 | `Git Steve-<version>-x64-test.appx` |
 | `yarn dist:mas` | **Mac App Store** package (Apple silicon + Intel) | Mac | `mas-universal/Git Steve-<version>-mas.pkg` |
@@ -23,6 +23,42 @@ The store commands check your setup first and stop with a message saying what's 
 The app icon is `build/icon.png` (macOS) and `build/icon.ico` (Windows). The Store tile images are in
 `build/appx/`. `scripts/make_icons.py` draws all of them; change it and run `python scripts/make_icons.py`
 (needs [Pillow](https://pypi.org/project/pillow/)) to update them together.
+
+---
+
+## GitHub releases
+
+Pushing a version tag builds the Windows and macOS installers on GitHub's servers and publishes them as a
+release, so you don't need a Mac to ship the Mac version.
+
+1. Raise `version` in `package.json` (for example to `0.2.0`), then commit and push.
+2. Tag that commit and push the tag. The tag must be `v` plus the version:
+
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+3. Follow the **Release** workflow on the repository's **Actions** tab. It type-checks and tests on Windows
+   and macOS, then builds:
+   - `GitSteve-Setup-<version>.exe` for Windows
+   - `GitSteve-<version>-arm64.dmg` and `GitSteve-<version>-x64.dmg` for Apple silicon and Intel Macs
+
+   It then publishes the release with the download notes from `.github/release-notes.md`, followed by a
+   list of the changes since the last release. It takes about 15 minutes.
+
+If a step fails, nothing is published. Fix the problem, move the tag to the new commit and push it again:
+
+```bash
+git tag -f v0.2.0
+git push -f origin v0.2.0
+```
+
+**Signing.** These builds have no publisher certificate: the Windows installer is unsigned, and the Mac app
+has only an ad-hoc signature, without which Apple silicon Macs won't open it at all. Users see a warning
+the first time they open either one, and the release notes explain how to get past it. To remove the
+warnings, build signed versions yourself (the notarised DMG below, or a Windows code-signing certificate)
+and replace the files on the release.
 
 ---
 

@@ -94,15 +94,17 @@ Get the latest installer from the [**Releases**](../../releases/latest) page:
 
 | System | File | How to install |
 |---|---|---|
-| Windows 10 / 11 (64-bit) | `Git Steve Setup <version>.exe` | Run it and follow the steps. |
-| macOS | `Git Steve-<version>….dmg` | Open it and drag **Git Steve** into **Applications**. |
+| Windows 10 / 11 (64-bit) | `GitSteve-Setup-<version>.exe` | Run it and follow the steps. |
+| macOS, Apple silicon (M1 and later) | `GitSteve-<version>-arm64.dmg` | Open it and drag **Git Steve** into **Applications**. |
+| macOS, Intel | `GitSteve-<version>-x64.dmg` | Same as above. |
 
 **"Unknown publisher" warnings.** Preview builds aren't code-signed yet, so your system may warn you the
 first time you open the app:
 
 - **Windows (SmartScreen):** click **More info** → **Run anyway**.
-- **macOS (Gatekeeper):** right-click **Git Steve** in Applications and choose **Open**, or go to
-  **System Settings → Privacy & Security** and click **Open Anyway**.
+- **macOS (Gatekeeper):** open Git Steve once and click **Done** when macOS says it can't verify it. Then
+  go to **System Settings → Privacy & Security** and click **Open Anyway**. (On macOS 14 and earlier,
+  right-clicking the app and choosing **Open** also works.)
 
 ### Or build it yourself
 

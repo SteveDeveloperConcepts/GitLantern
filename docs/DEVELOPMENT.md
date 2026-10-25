@@ -47,8 +47,10 @@ src/
     src/graph/CommitGraph.tsx virtualised list plus a canvas that draws only the visible lanes
 test/                   integration tests against real temporary repositories
 resources/askpass.cmd   askpass trampoline shipped with packaged Windows builds
-build/                  app icon, Store tile images (appx/) and Mac App Store entitlements
+build/                  app icon, Store tile images (appx/), Mac App Store entitlements, and
+                        adhoc-mac.yml (Mac builds without a certificate)
 scripts/                store-build preflight check, icon generator
+.github/workflows/      release.yml: a pushed v* tag builds the installers and publishes a GitHub release
 ```
 
 **Git.** Every operation shells out to the `git` CLI with machine-readable flags (`--porcelain=v2 -z`,

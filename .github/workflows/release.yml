@@ -1,0 +1,86 @@
+# Push a version tag (for example v0.2.0) to build the Windows and macOS installers and publish them as a
+# GitHub release. See docs/RELEASING.md.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            dist: yarn dist:win --x64
+          # No Apple certificate yet: build/adhoc-mac.yml gives the app an ad-hoc signature instead.
+          - name: macOS
+            os: macos-latest
+            dist: yarn dist:mac --x64 --arm64 -c build/adhoc-mac.yml
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+
+      - name: Check the tag matches package.json
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match version $version in package.json"
+            exit 1
+          fi
+
+      - run: yarn typecheck
+      # The askpass test runs the built helper, so build first.
+      - run: yarn build
+      - run: yarn test
+
+      - name: Build installers
+        shell: bash
+        run: ${{ matrix.dist }} --publish never
+
+      - name: Check the app signatures
+        if: runner.os == 'macOS'
+        run: |
+          for app in dist/mac*/*.app; do
+            codesign --verify --deep --strict --verbose=2 "$app"
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installers-${{ matrix.name }}
+          path: |
+            dist/*.exe
+            dist/*.dmg
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: installers
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          sed "s/<version>/$version/g" .github/release-notes.md > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" installers/* --verify-tag \
+            --title "Git Steve $version" --notes-file "$RUNNER_TEMP/notes.md" --generate-notes

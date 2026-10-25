@@ -22,6 +22,8 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
+  # No spaces in release file names: GitHub renames uploads that have them.
+  artifactName: GitSteve-Setup-${version}.${ext}
 
 # Microsoft Store package: `yarn dist:msstore`. See docs/RELEASING.md.
 appx:
@@ -44,6 +46,8 @@ mac:
     - dmg
   category: public.app-category.developer-tools
   hardenedRuntime: true
+dmg:
+  artifactName: GitSteve-${version}-${arch}.${ext}
 
 # Mac App Store package: `yarn dist:mas` (store) or `yarn dist:mas-dev` (local test). See docs/RELEASING.md.
 mas:
