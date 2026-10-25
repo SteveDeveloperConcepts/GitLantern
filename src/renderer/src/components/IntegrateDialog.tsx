@@ -16,14 +16,17 @@ interface Props {
   repoPath: string
   /** Uncommitted changes to tracked files. */
   dirty: boolean
-  onConfirm(options: { noFastForward: boolean }): void
+  /** Opened by Pull on diverged branches: explains why, and lets the user switch between merge and rebase. */
+  pull?: boolean
+  onConfirm(options: { kind: IntegrateKind; noFastForward: boolean }): void
   onCancel(): void
 }
 
 const commits = (count: number): string => `${count} commit${count === 1 ? '' : 's'}`
 
 /** Confirms a merge or rebase after explaining what it will do to the current branch. */
-export function IntegrateDialog({ kind, target, current, upstream, repoPath, dirty, onConfirm, onCancel }: Props) {
+export function IntegrateDialog({ kind: initialKind, target, current, upstream, repoPath, dirty, pull, onConfirm, onCancel }: Props) {
+  const [kind, setKind] = useState(initialKind)
   const [comparison, setComparison] = useState<BranchComparison | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [noFastForward, setNoFastForward] = useState(false)
@@ -48,18 +51,35 @@ export function IntegrateDialog({ kind, target, current, upstream, repoPath, dir
     const { ahead, behind } = comparison
     summary = merge
       ? `Brings ${commits(behind)} from ${target.label} into ${current} and records ${behind === 1 ? 'it' : 'them'} with a new merge commit.`
-      : `${target.label} has ${commits(behind)} that ${current} doesn’t. Rebasing moves the ${commits(ahead)} made on ${current} to after them, one by one. ${ahead === 1 ? 'It gets a new ID' : 'They get new IDs'}, and the history becomes a straight line.`
+      : `${target.label} has ${commits(behind)} that ${current} doesn’t. Rebasing moves the ${commits(ahead)} made on ${current} to after ${behind === 1 ? 'it' : 'them'}, one by one. ${ahead === 1 ? 'It gets a new ID' : 'They get new IDs'}, and the history becomes a straight line.`
   }
 
+  const title = pull ? `Pull from ${target.label}` : merge ? `Merge ${target.label} into ${current}` : `Rebase ${current} onto ${target.label}`
+
   return (
-    <Modal title={merge ? `Merge ${target.label} into ${current}` : `Rebase ${current} onto ${target.label}`} onClose={onCancel}>
+    <Modal title={title} onClose={onCancel}>
       <form
         className="form"
         onSubmit={(event) => {
           event.preventDefault()
-          if (canConfirm) onConfirm({ noFastForward: merge && fastForward && noFastForward })
+          if (canConfirm) onConfirm({ kind, noFastForward: merge && fastForward && noFastForward })
         }}
       >
+        {pull && (
+          <>
+            <p className="dialog-text">
+              {current} and {target.label} have both changed since they split, so {current} can’t simply move
+              forward. Choose how to combine them:
+            </p>
+            <div className="segmented choice" role="group" aria-label="How to combine the branches">
+              {(['merge', 'rebase'] as const).map((option) => (
+                <button key={option} type="button" aria-pressed={kind === option} onClick={() => setKind(option)}>
+                  {option === 'merge' ? 'Merge' : 'Rebase'}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
         {!comparison && !error && (
           <p className="dim">
             <span className="spinner" /> Comparing branches…

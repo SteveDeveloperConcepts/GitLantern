@@ -66,6 +66,14 @@ git never waits for an editor. A stop on conflicts returns `{ conflicted: true }
 `CHERRY_PICK_HEAD`, `REVERT_HEAD`) on every refresh. That also picks up a merge or rebase started in a
 terminal, and the banner offers `--continue`, `--skip` and `--abort` for it.
 
+**Pull and push.** Pull runs `git fetch` and then `git merge --ff-only @{upstream}`, but only when the
+branch has no commits of its own. When both sides have new commits, it returns `diverged` and the
+renderer opens the merge/rebase dialog in its Pull mode. A push that git refuses (`[rejected]`) is
+explained after a fetch by `unseenUpstreamCommits`. It counts the upstream commits that the branch's
+reflog never pointed at. If there are any, someone else pushed, and the advice is to pull. If there
+are none, the user rewrote commits that were already pushed, and the advice is a force push from a
+terminal. Pull uses the same check, so it never offers to merge those old copies back in.
+
 **Credentials.** Git and ssh are started with `GIT_ASKPASS` / `SSH_ASKPASS` pointing at a small
 trampoline (`askpass.cmd` on Windows, `askpass.sh` elsewhere) in the app's data folder. Packaged Windows
 builds use the copy in `resources/` instead, because Microsoft Store packages hide new AppData files from

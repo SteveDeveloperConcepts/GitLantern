@@ -33,9 +33,10 @@ managers keep working.
 - **Conflicts:** when a merge or rebase stops on conflicts, a banner shows how far it got. Each
   conflicted file opens with its two sides highlighted. Fix them in your editor, stage them, then
   finish, skip the commit (rebase) or abort.
-- **Fetch, pull and push:** fetch all remotes, pull (fast-forward only, so no surprise merge commits)
-  and push. The buttons show how many commits are waiting. A new branch's upstream is set on its first
-  push.
+- **Fetch, pull and push:** fetch all remotes, pull and push. The buttons show how many commits are
+  waiting. Pull never makes a merge commit behind your back. When your branch and the remote have both
+  moved on, it asks whether to merge or rebase. A refused push is explained in plain words. A new
+  branch's upstream is set on its first push.
 - **Live updates:** the view refreshes when files change on disk or when you use Git from a terminal.
 
 ### Any Git service
@@ -149,7 +150,9 @@ Builds for the Microsoft Store and the Mac App Store are covered in [docs/RELEAS
 6. **Remotes:** the **Remotes** tab lists where this repository pushes and pulls. **Add remote**
    connects a new or empty repository to a service. **Test connection** checks the address first.
 7. **Sync:** use **Fetch**, **Pull** and **Push** in the top bar. The status bar at the bottom shows
-   your branch, how many commits you're ahead or behind, and which account the remote uses.
+   your branch, how many commits you're ahead or behind, and which account the remote uses. If Pull and
+   Push both show a number, the remote has commits you don't and you have commits it doesn't. Click
+   **Pull** and choose **Merge** or **Rebase** before you push.
 
 ## Where your data lives
 
@@ -201,14 +204,17 @@ Your Git credential manager (for example Git Credential Manager on Windows, or t
 helper) is handling sign-in, so you should see its window instead. Servers you connect in Git Steve use
 your Git Steve account instead.
 
-**Pull says it can't fast-forward**<br>
-Your branch and the remote have both moved on. Click **Fetch**, then right-click the remote branch
-(for example `origin/main`) in the graph and choose **Merge** or **Rebase**.
+**"Push refused: origin/main has commits that main doesn't"**<br>
+Someone else, or you on another computer, pushed to that branch since you last pulled. Click **Pull**.
+Because both sides have new commits, Git Steve asks how to combine them. **Merge** adds a merge commit.
+**Rebase** moves your commits after theirs. If the same lines changed on both sides, fix the conflicts
+it shows, then push again. **Don't force-push here:** it would delete their commits from the server.
 
-**I rebased and now Push is rejected**<br>
-Rebasing gave commits you had already pushed new IDs, so the remote branch has to be replaced. Git
-Steve can't force-push yet. From a terminal in the repository, run `git push --force-with-lease`.
-Only do that on a branch nobody else is working on.
+**"Push refused: origin/main still has the old copies of commits you've since rewritten"**<br>
+You rebased, or amended, commits that were already pushed, so the server's copies have to be replaced.
+Git Steve can't force-push yet. If nobody else works on that branch, run `git push --force-with-lease`
+in a terminal in the repository. It refuses if someone pushed in the meantime. Git Steve only shows
+this message when every commit on the server was once on your branch.
 
 ## Roadmap
 

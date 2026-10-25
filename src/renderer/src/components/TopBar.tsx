@@ -86,7 +86,7 @@ export function TopBar(props: Props) {
         <button onClick={props.onFetch} disabled={busy} title="Download new commits from every remote">
           <Icon name="fetch" size={15} /> Fetch
         </button>
-        <button onClick={props.onPull} disabled={busy} title="Fast-forward to the remote branch">
+        <button onClick={props.onPull} disabled={busy} title="Bring in new commits from the remote branch">
           <Icon name="pull" size={15} /> Pull
           {behind > 0 && <span className="badge info">{behind}</span>}
         </button>

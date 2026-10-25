@@ -405,6 +405,18 @@ button.chip:hover {
 .segmented button + button {
   border-left: 1px solid var(--border-strong);
 }
+/* A segmented control used as a choice, e.g. merge or rebase in the Pull dialog. */
+.segmented.choice {
+  align-self: flex-start;
+}
+.segmented.choice button {
+  min-width: 96px;
+}
+.segmented.choice button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+}
 
 .menu {
   position: relative;

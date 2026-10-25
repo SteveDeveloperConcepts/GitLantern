@@ -50,7 +50,7 @@ export function App() {
   const [accountCount, setAccountCount] = useState(0)
   /** Where "New branch" starts from; null for the checked-out commit. */
   const [branchFrom, setBranchFrom] = useState<RefTarget | null>(null)
-  const [integrate, setIntegrate] = useState<{ kind: IntegrateKind; target: RefTarget } | null>(null)
+  const [integrate, setIntegrate] = useState<{ kind: IntegrateKind; target: RefTarget; pull?: boolean } | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; groups: MenuItem[][] } | null>(null)
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
   const { status, commits, branches, remotes, error, refresh } = useRepo(repo)
@@ -133,6 +133,22 @@ export function App() {
       setMessage(conflicted ? 'Stopped on conflicts. Resolve them, then continue.' : success)
       if (conflicted) setTab('changes')
     })
+
+  const pull = () =>
+    run(
+      'Pulling',
+      async (repoPath) => {
+        const { outcome, upstream } = await api.git.pull(repoPath)
+        if (outcome === 'diverged') {
+          setMessage(`${upstream} and your branch have both changed`)
+          setIntegrate({ kind: 'merge', target: { ref: upstream, label: upstream }, pull: true })
+        } else {
+          setMessage(outcome === 'up-to-date' ? `Already up to date with ${upstream}` : `Pulled from ${upstream}`)
+        }
+      },
+      undefined,
+      true
+    )
 
   const checkout = (branch: Branch) =>
     run(`Checking out ${branch.name}`, (path) => api.git.checkout(path, branch), `Checked out ${branch.name}`)
@@ -220,9 +236,10 @@ export function App() {
           upstream={status.branch.upstream}
           repoPath={repo.path}
           dirty={status.entries.some((e) => !e.untracked && (e.index !== null || e.worktree !== null))}
+          {...(integrate.pull ? { pull: true } : {})}
           onCancel={() => setIntegrate(null)}
-          onConfirm={({ noFastForward }) => {
-            const { kind, target } = integrate
+          onConfirm={({ kind, noFastForward }) => {
+            const { target } = integrate
             const current = status.branch.head ?? 'HEAD'
             setIntegrate(null)
             void (kind === 'merge'
@@ -301,7 +318,7 @@ export function App() {
           setDialog('new-branch')
         }}
         onFetch={() => run('Fetching', api.git.fetch, 'Fetched all remotes', true)}
-        onPull={() => run('Pulling', api.git.pull, 'Pulled (fast-forward)', true)}
+        onPull={() => void pull()}
         onPush={() => run('Pushing', api.git.push, 'Pushed', true)}
         onAccounts={() => setDialog('accounts')}
       />

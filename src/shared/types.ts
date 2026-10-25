@@ -50,6 +50,16 @@ export interface OperationResult {
   conflicted: boolean
 }
 
+/**
+ * What Pull did. `diverged`: both sides have new commits, so nothing changed and the user chooses
+ * between merging and rebasing.
+ */
+export interface PullResult {
+  outcome: 'up-to-date' | 'fast-forward' | 'diverged'
+  /** The remote branch pulled from, e.g. `origin/main`. */
+  upstream: string
+}
+
 /** The current branch compared with another branch or commit, for the merge and rebase dialogs. */
 export interface BranchComparison {
   /** Commits on the current branch that the other one doesn't have. */
@@ -264,7 +274,7 @@ export interface GitSteveApi {
     skipOperation(repo: string): Promise<OperationResult>
     abortOperation(repo: string): Promise<void>
     fetch(repo: string): Promise<void>
-    pull(repo: string): Promise<void>
+    pull(repo: string): Promise<PullResult>
     push(repo: string): Promise<void>
   }
   askpass: {

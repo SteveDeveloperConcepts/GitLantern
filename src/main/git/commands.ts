@@ -10,6 +10,7 @@ import type {
   ConnectionTest,
   DiffTarget,
   OperationResult,
+  PullResult,
   RepoOperation,
   RepoStatus
 } from '../../shared/types'
@@ -401,9 +402,63 @@ export async function fetch(repo: string): Promise<void> {
   await runGit([...(await repoCredentialArgs(repo)), 'fetch', '--all', '--prune'], { cwd: repo })
 }
 
-export async function pull(repo: string): Promise<void> {
-  // Fast-forward only, so a pull never creates a merge commit behind the user's back.
-  await runGit([...(await repoCredentialArgs(repo)), 'pull', '--ff-only'], { cwd: repo })
+const commitCount = (count: number): string => `${count} commit${count === 1 ? '' : 's'}`
+
+/**
+ * How many commits on the upstream this branch has never pointed at, going by its reflog. None means
+ * the upstream only has commits this branch once had, so it was rewritten (rebased, amended) since
+ * they were pushed. Without a reflog every upstream commit counts as unseen, which leads to the safe
+ * advice: pull.
+ */
+async function unseenUpstreamCommits(repo: string, branchName: string): Promise<number> {
+  const { stdout: history } = await runGit(['reflog', 'show', '--format=%H', `refs/heads/${branchName}`], {
+    cwd: repo,
+    allowedExitCodes: [0, 128]
+  })
+  const seen = history.split('\n').filter(Boolean).map((hash) => `^${hash}`)
+  const { stdout } = await runGit(['rev-list', '--count', '--stdin', '@{upstream}'], { cwd: repo, stdin: seen.join('\n') })
+  return Number(stdout.trim())
+}
+
+function rewrittenMessage(upstream: string): string {
+  return (
+    `${upstream} still has the old copies of commits you've since rewritten, for example by rebasing. ` +
+    'Replacing them takes a force push, which Git Steve can’t do yet. If nobody else works on that ' +
+    'branch, run "git push --force-with-lease" in a terminal.'
+  )
+}
+
+/**
+ * Fetch, then fast-forward if that's all it takes. When both sides have new commits nothing changes:
+ * the user picks merge or rebase, so a pull never makes a merge commit behind their back.
+ */
+export async function pull(repo: string): Promise<PullResult> {
+  const { branch } = await status(repo)
+  if (branch.head === null) throw new Error('Check out a branch to pull into it')
+  if (!branch.upstream) throw new Error(`${branch.head} isn’t linked to a remote branch yet. Push it first.`)
+  const upstream = branch.upstream
+
+  await runGit([...(await repoCredentialArgs(repo)), 'fetch'], { cwd: repo })
+  const { ahead, behind } = (await status(repo)).branch
+  if (behind === 0) return { outcome: 'up-to-date', upstream }
+  if (ahead > 0) {
+    if ((await unseenUpstreamCommits(repo, branch.head)) === 0) throw new Error(`Nothing to pull: ${rewrittenMessage(upstream)}`)
+    return { outcome: 'diverged', upstream }
+  }
+  await runGit(['merge', '--ff-only', '@{upstream}'], { cwd: repo })
+  return { outcome: 'fast-forward', upstream }
+}
+
+/** Say in plain words why the remote refused a push, after fetching what it has. */
+async function rejectedPushMessage(repo: string, auth: string[], branchName: string, upstream: string): Promise<string> {
+  await runGit([...auth, 'fetch'], { cwd: repo })
+  const unseen = await unseenUpstreamCommits(repo, branchName)
+  if (unseen === 0) return `Push refused: ${rewrittenMessage(upstream)}`
+  const them = unseen === 1 ? 'it' : 'them'
+  return (
+    `Push refused: ${upstream} has ${commitCount(unseen)} that ${branchName} doesn’t, and pushing would throw ${them} ` +
+    `away. Click Pull to bring ${them} in (Git Steve asks whether to merge or rebase), then push again.`
+  )
 }
 
 export async function push(repo: string): Promise<void> {
@@ -411,7 +466,13 @@ export async function push(repo: string): Promise<void> {
   if (branch.head === null) throw new Error('Cannot push a detached HEAD')
   const auth = await repoCredentialArgs(repo)
   if (branch.upstream) {
-    await runGit([...auth, 'push'], { cwd: repo })
+    try {
+      await runGit([...auth, 'push'], { cwd: repo })
+    } catch (error) {
+      // git translates the reason after "[rejected]" but not the marker itself.
+      if (!(error instanceof GitError) || !error.stderr.includes('[rejected]')) throw error
+      throw new Error(await rejectedPushMessage(repo, auth, branch.head, branch.upstream))
+    }
     return
   }
   const names = (await remotes(repo)).map((r) => r.name)
