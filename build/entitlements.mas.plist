@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Mac App Store build of the app itself. electron-builder adds the team ID, application identifier
+  and application group from the provisioning profile while signing.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <!-- fetch / pull / push / clone, and the Git service APIs. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    <!-- Repositories and clone folders the user picks in the open dialog. -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <!-- Reopening those folders after a restart (security-scoped bookmarks). -->
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+  </dict>
+</plist>

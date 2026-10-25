@@ -1,0 +1,39 @@
+{
+  "name": "gitsteve",
+  "productName": "Git Steve",
+  "version": "0.1.0",
+  "description": "A cross-platform Git client for macOS and Windows",
+  "author": "Steve Vaubell",
+  "private": true,
+  "main": "./out/main/index.js",
+  "packageManager": "yarn@1.22.22",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit --composite false -p tsconfig.node.json && tsc --noEmit --composite false -p tsconfig.web.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "dist": "electron-vite build && electron-builder",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "dist:mac": "electron-vite build && electron-builder --mac",
+    "dist:msstore": "node scripts/store-check.mjs msstore && electron-vite build && electron-builder --win appx --x64 --arm64",
+    "dist:msstore-test": "electron-vite build && electron-builder --win appx --x64 -c.appx.publisher=\"CN=GitSteveTest, OID.2.25.311729368913984317654407730594956997722=1\" -c.appx.artifactName=${productName}-${version}-${arch}-test.${ext}",
+    "dist:mas": "node scripts/store-check.mjs mas && electron-vite build && electron-builder --mac mas --universal",
+    "dist:mas-dev": "node scripts/store-check.mjs mas-dev && electron-vite build && electron-builder --mac mas-dev"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^44.9.3",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "~6.0.3",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

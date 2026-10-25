@@ -1,0 +1,59 @@
+appId: com.developerconcepts.gitsteve
+productName: Git Steve
+copyright: Copyright © 2026 Steve Vaubell
+directories:
+  buildResources: build
+  output: dist
+files:
+  - out/**/*
+  - package.json
+# git runs the askpass helper as a plain Node script, so keep it outside the asar archive.
+asarUnpack:
+  - out/main/askpass.js
+
+win:
+  target:
+    - nsis
+  # The askpass trampoline ships with the app: Microsoft Store builds can't rely on one written to
+  # AppData (see src/main/askpass/trampoline.ts).
+  extraResources:
+    - from: resources/askpass.cmd
+      to: askpass.cmd
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+# Microsoft Store package: `yarn dist:msstore`. See docs/RELEASING.md.
+appx:
+  # Copy these three from Partner Center → your app → Product management → Product identity.
+  identityName: REPLACE-ME.GitSteve # Package/Identity/Name
+  publisher: CN=REPLACE-ME # Package/Identity/Publisher
+  publisherDisplayName: REPLACE-ME # Package/Properties/PublisherDisplayName
+  applicationId: GitSteve
+  displayName: Git Steve
+  backgroundColor: transparent
+  languages:
+    - en-US
+  # Windows 10 version 2004 and later.
+  minVersion: 10.0.19041.0
+  maxVersionTested: 10.0.26100.0
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+mac:
+  target:
+    - dmg
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+
+# Mac App Store package: `yarn dist:mas` (store) or `yarn dist:mas-dev` (local test). See docs/RELEASING.md.
+mas:
+  # The App Sandbox replaces the hardened runtime; `mac.hardenedRuntime` would otherwise carry over.
+  hardenedRuntime: false
+  entitlements: build/entitlements.mas.plist
+  entitlementsInherit: build/entitlements.mas.inherit.plist
+  # The "Mac App Store Connect" distribution profile from developer.apple.com.
+  provisioningProfile: build/embedded.provisionprofile
+  artifactName: ${productName}-${version}-mas.${ext}
+masDev:
+  # A "macOS App Development" profile that includes this Mac.
+  provisioningProfile: build/development.provisionprofile

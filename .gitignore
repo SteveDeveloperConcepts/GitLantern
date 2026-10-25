@@ -1,0 +1,7 @@
+node_modules/
+out/
+dist/
+*.log
+.DS_Store
+# Apple provisioning profiles are tied to your developer account.
+build/*.provisionprofile
