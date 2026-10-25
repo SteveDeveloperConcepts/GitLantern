@@ -81,6 +81,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=${GITHUB_REF_NAME#v}
-          sed "s/<version>/$version/g" .github/release-notes.md > "$RUNNER_TEMP/notes.md"
+          tag="refs/tags/$GITHUB_REF_NAME"
+          notes="$RUNNER_TEMP/notes.md"
+          : > "$notes"
+          # An annotated tag's message, after its first line, becomes "What's new". actions/checkout
+          # swaps an annotated tag for a plain one, so fetch the real tag to read its message.
+          git fetch --quiet --force origin "$tag:$tag"
+          if [ "$(git cat-file -t "$tag")" = tag ]; then
+            whats_new=$(git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME")
+            if [ -n "$(printf '%s' "$whats_new" | tr -d '[:space:]')" ]; then
+              printf "## What's new\n\n%s\n\n" "$whats_new" > "$notes"
+            fi
+          fi
+          sed "s/<version>/$version/g" .github/release-notes.md >> "$notes"
           gh release create "$GITHUB_REF_NAME" installers/* --verify-tag \
-            --title "Git Steve $version" --notes-file "$RUNNER_TEMP/notes.md" --generate-notes
+            --title "Git Steve $version" --notes-file "$notes" --generate-notes

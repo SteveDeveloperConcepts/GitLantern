@@ -31,28 +31,44 @@ The app icon is `build/icon.png` (macOS) and `build/icon.ico` (Windows). The Sto
 Pushing a version tag builds the Windows and macOS installers on GitHub's servers and publishes them as a
 release, so you don't need a Mac to ship the Mac version.
 
-1. Raise `version` in `package.json` (for example to `0.2.0`), then commit and push.
-2. Tag that commit and push the tag. The tag must be `v` plus the version:
+1. Raise `version` in `package.json` (for example to `0.3.0`), then commit and push.
+2. Tag that commit with a message saying what's new, and push the tag. The tag must be `v` plus the
+   version:
 
    ```bash
-   git tag v0.2.0
-   git push origin v0.2.0
+   git tag -a v0.3.0 -m "Git Steve 0.3.0" -m "- Stash your changes from the Changes tab
+   - Faster commit graph on large repositories"
+   git push origin v0.3.0
    ```
+
+   The first `-m` is only a title. The second becomes the release's **What's new** section. Keep each
+   item on one line, because GitHub shows every line break in release notes. To write the message in
+   your editor instead, run `git tag -a v0.3.0` on its own. Put the title on the first line, then a blank
+   line, then what's new. A tag made without `-a` still works, but its release has no What's new
+   section.
 
 3. Follow the **Release** workflow on the repository's **Actions** tab. It type-checks and tests on Windows
    and macOS, then builds:
    - `GitSteve-Setup-<version>.exe` for Windows
    - `GitSteve-<version>-arm64.dmg` and `GitSteve-<version>-x64.dmg` for Apple silicon and Intel Macs
 
-   It then publishes the release with the download notes from `.github/release-notes.md`, followed by a
-   list of the changes since the last release. It takes about 15 minutes.
+   It then publishes the release. The release notes contain:
+   - **What's new**, from the tag message
+   - the download notes from `.github/release-notes.md`
+   - a link to every change since the last release
 
-If a step fails, nothing is published. Fix the problem, move the tag to the new commit and push it again:
+   It takes about 3 minutes.
+
+If a step fails, nothing is published. Fix the problem, then move the tag to the new commit with the same
+message, and push it again:
 
 ```bash
-git tag -f v0.2.0
-git push -f origin v0.2.0
+git tag -f -a v0.3.0 -m "Git Steve 0.3.0" -m "- Stash your changes from the Changes tab"
+git push -f origin v0.3.0
 ```
+
+Once a release is published, re-tagging doesn't change it. To change its notes, open the release on
+GitHub and click **Edit**.
 
 **Signing.** These builds have no publisher certificate: the Windows installer is unsigned, and the Mac app
 has only an ad-hoc signature, without which Apple silicon Macs won't open it at all. Users see a warning
