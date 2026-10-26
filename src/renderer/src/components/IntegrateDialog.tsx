@@ -101,7 +101,7 @@ export function IntegrateDialog({ kind: initialKind, target, current, upstream, 
             <p>
               {comparison.published === comparison.ahead ? 'These commits are' : `${comparison.published} of them are`} already on{' '}
               {upstream ?? 'the remote'}. After rebasing, your branch and {upstream ?? 'the remote'} will have different
-              histories, and you’ll need to force-push from a terminal (Git Steve can’t force-push yet). On a branch other
+              histories, and replacing the old copies on the remote takes a force push (Push offers one). On a branch other
               people use, merging is safer.
             </p>
           </div>

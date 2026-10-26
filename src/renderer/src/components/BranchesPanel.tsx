@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { Branch } from '../../../shared/types'
+import type { Branch, Stash } from '../../../shared/types'
+import { formatRelative } from '../format'
 
 const api = window.api
 
@@ -9,6 +10,16 @@ interface Props {
   /** Single click: jump to the branch's commit in the graph. */
   onSelect(branch: Branch): void
   onContextMenu(branch: Branch, position: { x: number; y: number }): void
+}
+
+interface StashProps {
+  stashes: Stash[]
+  /** The stash whose changes are open below the graph. */
+  selectedStash: string | null
+  onSelectStash(stash: Stash): void
+  /** Double-click: apply it. */
+  onApplyStash(stash: Stash): void
+  onStashMenu(stash: Stash, position: { x: number; y: number }): void
 }
 
 function groupRemotes(branches: Branch[]): Map<string, Branch[]> {
@@ -39,7 +50,7 @@ function BranchItem({ branch, label, onCheckout, onSelect, onContextMenu }: { br
   )
 }
 
-export function BranchesPanel({ branches, onCheckout, onSelect, onContextMenu }: Props) {
+export function BranchesPanel({ branches, onCheckout, onSelect, onContextMenu, ...stashProps }: Props & StashProps) {
   const local = branches.filter((b) => b.kind === 'local')
   const remotes = groupRemotes(branches)
 
@@ -80,8 +91,40 @@ export function BranchesPanel({ branches, onCheckout, onSelect, onContextMenu }:
         </section>
       ))}
       <p className="hint">Double-click a branch to check it out. Right-click to merge or rebase.</p>
+      <Stashes {...stashProps} />
       <SavedCredentials />
     </div>
+  )
+}
+
+function Stashes({ stashes, selectedStash, onSelectStash, onApplyStash, onStashMenu }: StashProps) {
+  if (stashes.length === 0) return null
+  return (
+    <section className="stashes">
+      <h3>Stashes · {stashes.length}</h3>
+      <ul>
+        {stashes.map((stash) => (
+          <li
+            key={stash.hash}
+            className={`stash-item${stash.hash === selectedStash ? ' selected' : ''}`}
+            title={`${stash.message}
+Double-click to apply, right-click for more`}
+            onClick={() => onSelectStash(stash)}
+            onDoubleClick={() => onApplyStash(stash)}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              onStashMenu(stash, { x: event.clientX, y: event.clientY })
+            }}
+          >
+            <span className="ellipsis">{stash.message}</span>
+            <span className="stash-meta">
+              {stash.branch ? `${stash.branch} · ` : ''}
+              {formatRelative(stash.date)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

@@ -11,6 +11,9 @@ interface Props {
   branches: Branch[]
   busy: boolean
   accountCount: number
+  /** There are uncommitted changes to stash. */
+  canStash: boolean
+  stashCount: number
   onOpen(): void
   onOpenRecent(path: string): void
   onClone(): void
@@ -19,11 +22,13 @@ interface Props {
   onFetch(): void
   onPull(): void
   onPush(): void
+  onStash(): void
+  onPop(): void
   onAccounts(): void
 }
 
 export function TopBar(props: Props) {
-  const { repo, status, branches, busy, accountCount } = props
+  const { repo, status, branches, busy, accountCount, canStash, stashCount } = props
   const [recent, setRecent] = useState<RepoInfo[]>([])
   const head = status?.branch.head ?? (status?.branch.oid ? `detached ${status.branch.oid.slice(0, 7)}` : '…')
   const ahead = status?.branch.ahead ?? 0
@@ -93,6 +98,14 @@ export function TopBar(props: Props) {
         <button onClick={props.onPush} disabled={busy} title="Upload your commits">
           <Icon name="push" size={15} /> Push
           {ahead > 0 && <span className="badge accent">{ahead}</span>}
+        </button>
+      </div>
+      <div className="segmented" role="group" aria-label="Stash">
+        <button onClick={props.onStash} disabled={busy || !canStash} title="Put your uncommitted changes aside, leaving a clean working copy">
+          <Icon name="stash" size={15} /> Stash
+        </button>
+        <button onClick={props.onPop} disabled={busy || stashCount === 0} title="Bring back the latest stash and delete it">
+          <Icon name="pop" size={15} /> Pop
         </button>
       </div>
       <button className="bar-button" onClick={props.onNewBranch} disabled={busy}>

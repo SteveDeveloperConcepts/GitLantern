@@ -61,7 +61,7 @@ if (!app.requestSingleInstanceLock()) {
     const userData = app.getPath('userData')
     const settings = new Settings(path.join(userData, 'settings.json'))
     const secrets = new SecretStore(path.join(userData, 'secrets.json'))
-    const accounts = new AccountStore(path.join(userData, 'accounts.json'), secrets)
+    const accounts = new AccountStore(path.join(userData, 'accounts.json'), secrets, () => settings.get().oauthClients ?? {})
 
     askpass = await setupAskPass({ secrets, accounts, getWindow: () => mainWindow })
     const askpassEnv = askpass.env

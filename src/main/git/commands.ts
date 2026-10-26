@@ -1,29 +1,39 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { countConflicts, resolveConflict as resolveConflictText } from '../../shared/conflicts'
+import { parsePatch, patchPaths } from '../../shared/patch'
 import { credentialOrigin, parseRemoteUrl, repoNameFromUrl } from '../../shared/remoteUrl'
 import type {
   Branch,
   BranchComparison,
+  ChangedFile,
   CloneProgress,
   Commit,
   CommitDetail,
+  ConflictPick,
   ConnectionTest,
   DiffTarget,
+  LogFilter,
   OperationResult,
+  PatchAction,
   PullResult,
+  PushResult,
   RepoOperation,
-  RepoStatus
+  RepoStatus,
+  Stash
 } from '../../shared/types'
 import {
   BRANCH_FORMAT,
   DETAIL_FORMAT,
   LOG_FORMAT,
+  STASH_FORMAT,
   parseBranches,
   parseCommitDetail,
   parseLog,
   parseNameStatus,
   parseNumstat,
   parseRemotes,
+  parseStashes,
   parseStatus,
   type Remote
 } from './parsers'
@@ -84,6 +94,17 @@ const NO_EDITOR = { GIT_EDITOR: 'true' }
 /** Paths go to git on stdin (NUL-separated), which avoids Windows' command-line length limit. */
 function pathspecStdin(paths: string[]): { args: string[]; stdin: string } {
   return { args: ['--pathspec-from-file=-', '--pathspec-file-nul'], stdin: paths.join('\0') }
+}
+
+/** Paths are file names, not patterns: `*.txt` means the file called that, nothing more. */
+const LITERAL_PATHS = { GIT_LITERAL_PATHSPECS: '1' }
+
+/** The absolute path of a file inside the repository; throws for anything that would leave it. */
+function insideRepo(repo: string, relPath: string): string {
+  const absolute = path.resolve(repo, relPath)
+  const relative = path.relative(repo, absolute)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Path is outside the repository')
+  return absolute
 }
 
 export async function getRepoRoot(dir: string): Promise<string> {
@@ -203,6 +224,26 @@ export async function rebase(repo: string, onto: string): Promise<OperationResul
   return untilConflict(repo, () => runGit(['rebase', onto], { cwd: repo, env: NO_EDITOR }))
 }
 
+/** Copy a commit onto the current branch as a new commit. A merge commit brings its changes against its first parent. */
+export async function cherryPick(repo: string, hash: string): Promise<OperationResult> {
+  assertHash(hash)
+  const busy = await operation(repo)
+  if (busy) throw new Error(`Finish the ${busy.kind} first`)
+  const mainline = (await parentsOf(repo, hash)).length > 1 ? ['-m', '1'] : []
+  try {
+    return await untilConflict(repo, () => runGit(['cherry-pick', ...mainline, hash], { cwd: repo, env: NO_EDITOR }))
+  } catch (error) {
+    if (error instanceof GitError && /would be overwritten/.test(error.stderr)) {
+      throw new Error('Cherry-pick refused: it would overwrite your uncommitted changes. Commit or stash them first, then try again.')
+    }
+    // Without conflicts, a cherry-pick only stops when the branch already has the commit's changes:
+    // the copy would be empty. Nothing was changed, so call it off.
+    if ((await operation(repo))?.kind !== 'cherry-pick') throw error
+    await runGit(['cherry-pick', '--abort'], { cwd: repo })
+    throw new Error(`Nothing to cherry-pick: the branch already has the changes from ${hash.slice(0, 7)}.`)
+  }
+}
+
 async function currentOperation(repo: string): Promise<RepoOperation> {
   const current = await operation(repo)
   if (!current) throw new Error('No merge or rebase is in progress')
@@ -225,20 +266,16 @@ export async function abortOperation(repo: string): Promise<void> {
   await runGit([kind, '--abort'], { cwd: repo })
 }
 
-export async function log(repo: string, maxCount = 2000): Promise<Commit[]> {
+export async function log(repo: string, maxCount = 2000, filter: LogFilter = {}): Promise<Commit[]> {
+  if (filter.branch) assertRevision(filter.branch)
+  // --exclude only applies to the --all that follows it.
+  const revisions = filter.branch ? [filter.branch] : ['--exclude=refs/stash', '--all']
+  // --parents rewrites each commit's parents to the nearest ones that also changed the path, so the
+  // filtered graph still joins up.
+  const paths = filter.path ? ['--parents', '--', filter.path] : []
   try {
     const { stdout } = await runGit(
-      [
-        'log',
-        '--date-order',
-        '--decorate=full',
-        `--max-count=${maxCount}`,
-        '-z',
-        `--format=${LOG_FORMAT}`,
-        // --exclude only applies to the --all that follows it.
-        '--exclude=refs/stash',
-        '--all'
-      ],
+      ['log', '--date-order', '--decorate=full', `--max-count=${maxCount}`, '-z', `--format=${LOG_FORMAT}`, ...revisions, ...paths],
       { cwd: repo }
     )
     return parseLog(stdout)
@@ -261,23 +298,27 @@ async function parentsOf(repo: string, hash: string): Promise<string[]> {
   return stdout.trim().split(' ').slice(1)
 }
 
-export async function show(repo: string, hash: string): Promise<CommitDetail> {
-  assertHash(hash)
-  const { stdout } = await runGit(['show', '-s', '--decorate=full', `--format=${DETAIL_FORMAT}`, hash], { cwd: repo })
-  const parents = await parentsOf(repo, hash)
-  // Merges are listed against their first parent.
-  const range = parents[0] ? [parents[0], hash] : ['--root', hash]
+/** Files changed between two commits, or in a root commit (`['--root', hash]`), with line counts. */
+async function changedFiles(repo: string, range: string[]): Promise<ChangedFile[]> {
   const diffTree = ['diff-tree', '--no-commit-id', '-r', '-z', '-M']
   const [nameStatus, numstat] = await Promise.all([
     runGit([...diffTree, '--name-status', ...range], { cwd: repo }),
     runGit([...diffTree, '--numstat', ...range], { cwd: repo })
   ])
   const counts = parseNumstat(numstat.stdout)
-  const files = parseNameStatus(nameStatus.stdout).map((file) => ({
+  return parseNameStatus(nameStatus.stdout).map((file) => ({
     ...file,
     additions: counts.get(file.path)?.additions ?? null,
     deletions: counts.get(file.path)?.deletions ?? null
   }))
+}
+
+export async function show(repo: string, hash: string): Promise<CommitDetail> {
+  assertHash(hash)
+  const { stdout } = await runGit(['show', '-s', '--decorate=full', `--format=${DETAIL_FORMAT}`, hash], { cwd: repo })
+  const parents = await parentsOf(repo, hash)
+  // Merges are listed against their first parent.
+  const files = await changedFiles(repo, parents[0] ? [parents[0], hash] : ['--root', hash])
   return parseCommitDetail(stdout, files)
 }
 
@@ -287,11 +328,7 @@ function truncate(text: string): string {
 
 /** Read up to MAX_DIFF_BYTES of a working-tree file inside the repository; null for a binary file. */
 async function readWorktreeFile(repo: string, relPath: string): Promise<string | null> {
-  const absolute = path.resolve(repo, relPath)
-  const relative = path.relative(repo, absolute)
-  if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Path is outside the repository')
-
-  const handle = await fs.open(absolute, 'r')
+  const handle = await fs.open(insideRepo(repo, relPath), 'r')
   try {
     const { size } = await handle.stat()
     const buffer = Buffer.alloc(Math.min(size, MAX_DIFF_BYTES))
@@ -321,7 +358,8 @@ async function untrackedDiff(repo: string, relPath: string): Promise<string> {
 }
 
 export async function diff(repo: string, target: DiffTarget): Promise<string> {
-  const common = ['--no-ext-diff', '--no-color']
+  // Fixed a/ and b/ prefixes whatever the user's config says, so parts of the diff can be applied back.
+  const common = ['--no-ext-diff', '--no-color', '--src-prefix=a/', '--dst-prefix=b/']
   const options = { cwd: repo, maxOutputBytes: 32 * MAX_DIFF_BYTES }
   switch (target.kind) {
     case 'worktree': {
@@ -341,6 +379,15 @@ export async function diff(repo: string, target: DiffTarget): Promise<string> {
       const args = parents[0]
         ? ['diff', ...common, '-M', parents[0], target.hash, '--', target.path]
         : ['show', ...common, '--format=', target.hash, '--', target.path]
+      const { stdout } = await runGit(args, options)
+      return truncate(stdout)
+    }
+    case 'stash': {
+      assertHash(target.hash)
+      // A stash commit's first parent is where it was made; its third holds the untracked files.
+      const args = target.untracked
+        ? ['show', ...common, '--format=', `${target.hash}^3`, '--', target.path]
+        : ['diff', ...common, `${target.hash}^1`, target.hash, '--', target.path]
       const { stdout } = await runGit(args, options)
       return truncate(stdout)
     }
@@ -364,6 +411,85 @@ export async function unstage(repo: string, paths: string[]): Promise<void> {
   }
   const { args, stdin } = pathspecStdin(paths)
   await runGit(['restore', '--staged', ...args], { cwd: repo, stdin })
+}
+
+/**
+ * Throw away uncommitted changes to these files. Tracked files go back to their staged version (or
+ * the committed one when nothing is staged); untracked files are handed to `removeFile`.
+ */
+export async function discard(
+  repo: string,
+  paths: string[],
+  removeFile: (absolutePath: string) => Promise<void> = (file) => fs.rm(file)
+): Promise<void> {
+  const entries = new Map((await status(repo)).entries.map((entry) => [entry.path, entry]))
+  const tracked: string[] = []
+  const untracked: string[] = []
+  for (const file of paths) {
+    const entry = entries.get(file)
+    if (!entry) continue
+    if (entry.conflicted) throw new Error(`${file} has conflicts. Pick a side for them instead.`)
+    if (entry.untracked) untracked.push(file)
+    else if (entry.worktree !== null) tracked.push(file)
+  }
+  if (tracked.length > 0) {
+    const { args, stdin } = pathspecStdin(tracked)
+    await runGit(['restore', '--worktree', ...args], { cwd: repo, stdin, env: LITERAL_PATHS })
+  }
+  for (const file of untracked) await removeFile(insideRepo(repo, file))
+}
+
+/**
+ * Apply a patch made by `selectLines` from this file's diff: `stage` adds its lines to the index,
+ * `unstage` takes them out of it, `discard` takes them out of the working tree.
+ */
+export async function applyPatch(repo: string, file: string, patch: string, action: PatchAction): Promise<void> {
+  const parsed = parsePatch(patch)
+  const paths = parsed ? patchPaths(parsed) : null
+  if (!paths || (paths.old ?? paths.new) !== file || (paths.new ?? paths.old) !== file) {
+    throw new Error(`That patch isn’t for ${file}`)
+  }
+  // Text that wasn't valid UTF-8 was replaced on its way to the UI; applying it would corrupt the file.
+  if (patch.includes('\uFFFD')) throw new Error(`${file} isn’t UTF-8 text, so it can only be staged or discarded as a whole.`)
+  insideRepo(repo, file)
+  const args = { stage: ['--cached'], unstage: ['--cached', '--reverse'], discard: ['--reverse'] }[action]
+  try {
+    await runGit(['apply', ...args, '--whitespace=nowarn', '-'], { cwd: repo, stdin: patch })
+  } catch (error) {
+    if (error instanceof GitError) {
+      throw new Error(`Git couldn’t apply those lines. If the file changed since its diff was shown, try again.\n\n${error.message}`)
+    }
+    throw error
+  }
+}
+
+/** Keep one side of a conflict in a file and save it. The file is staged once no conflicts are left. */
+export async function resolveConflict(repo: string, file: string, pick: ConflictPick): Promise<{ remaining: number }> {
+  const absolute = insideRepo(repo, file)
+  // latin1 maps every byte to one character and back, so the file's encoding survives untouched.
+  const text = await fs.readFile(absolute, 'latin1')
+  if (countConflicts(text) !== pick.conflicts) throw new Error(`${file} changed on disk. Its conflicts are shown again as they are now.`)
+  const result = resolveConflictText(text, pick.index, pick.choice)
+  await fs.writeFile(absolute, result.text, 'latin1')
+  if (result.remaining === 0) await runGit(['add', '--', file], { cwd: repo, env: LITERAL_PATHS })
+  return { remaining: result.remaining }
+}
+
+/**
+ * Take one side's whole version of a conflicted file and stage it. When that side deleted the file,
+ * it's deleted.
+ */
+export async function resolveFile(repo: string, file: string, side: 'ours' | 'theirs'): Promise<void> {
+  insideRepo(repo, file)
+  const options = { cwd: repo, env: LITERAL_PATHS }
+  try {
+    await runGit(['checkout', `--${side}`, '--', file], options)
+  } catch (error) {
+    if (!(error instanceof GitError) || !/does not have (our|their) version/.test(error.stderr)) throw error
+    await runGit(['rm', '-q', '--', file], options)
+    return
+  }
+  await runGit(['add', '--', file], options)
 }
 
 export async function commit(repo: string, message: string): Promise<void> {
@@ -390,6 +516,60 @@ export async function createBranch(repo: string, name: string, startPoint?: stri
   }
   if (startPoint) assertRevision(startPoint)
   await runGit(['switch', '-c', name, ...(startPoint ? [startPoint] : [])], { cwd: repo })
+}
+
+export async function stashes(repo: string): Promise<Stash[]> {
+  const { stdout } = await runGit(['stash', 'list', '-z', `--format=${STASH_FORMAT}`], { cwd: repo })
+  return parseStashes(stdout)
+}
+
+/** Stash every uncommitted change, untracked files included, leaving a clean working copy. */
+export async function stash(repo: string, message: string): Promise<void> {
+  const text = message.trim()
+  const { stdout } = await runGit(['stash', 'push', '--include-untracked', ...(text ? ['--message', text] : [])], { cwd: repo })
+  if (/no local changes to save/i.test(stdout)) throw new Error('There are no changes to stash')
+}
+
+/** Where a stash is in the list now, found by its commit, so a list that changed since can't hit another one. */
+async function stashRef(repo: string, hash: string): Promise<string> {
+  assertHash(hash)
+  const index = (await stashes(repo)).findIndex((entry) => entry.hash === hash)
+  if (index === -1) throw new Error('That stash doesn’t exist any more')
+  return `stash@{${index}}`
+}
+
+/**
+ * Bring a stash's changes back into the working copy. `pop` also deletes the stash, except when
+ * applying it stops on conflicts: then git keeps it.
+ */
+export async function applyStash(repo: string, hash: string, options: { pop: boolean }): Promise<OperationResult> {
+  const ref = await stashRef(repo, hash)
+  try {
+    await runGit(['stash', options.pop ? 'pop' : 'apply', ref], { cwd: repo })
+    return { conflicted: false }
+  } catch (error) {
+    // Unlike a merge, a stash leaves no state behind when it conflicts: only the conflicted files.
+    if (!(error instanceof GitError)) throw error
+    const { stdout } = await runGit(['ls-files', '--unmerged'], { cwd: repo })
+    if (stdout.trim()) return { conflicted: true }
+    throw error
+  }
+}
+
+export async function dropStash(repo: string, hash: string): Promise<void> {
+  await runGit(['stash', 'drop', '-q', await stashRef(repo, hash)], { cwd: repo })
+}
+
+/** A stash as a commit: its changes to tracked files, then the untracked files it saved (marked as such). */
+export async function showStash(repo: string, hash: string): Promise<CommitDetail> {
+  assertHash(hash)
+  const { stdout } = await runGit(['show', '-s', `--format=${DETAIL_FORMAT}`, hash], { cwd: repo })
+  // Parents: the commit it was made on, the staged changes, and (if any) the untracked files.
+  const [base, , untrackedCommit] = await parentsOf(repo, hash)
+  if (!base) throw new Error('Not a stash')
+  const tracked = await changedFiles(repo, [base, hash])
+  const untracked = untrackedCommit ? await changedFiles(repo, ['--root', untrackedCommit]) : []
+  return parseCommitDetail(stdout, [...tracked, ...untracked.map((file) => ({ ...file, untracked: true }))])
 }
 
 /** Credential overrides for every remote of the repository. */
@@ -423,8 +603,7 @@ async function unseenUpstreamCommits(repo: string, branchName: string): Promise<
 function rewrittenMessage(upstream: string): string {
   return (
     `${upstream} still has the old copies of commits you've since rewritten, for example by rebasing. ` +
-    'Replacing them takes a force push, which Git Steve can’t do yet. If nobody else works on that ' +
-    'branch, run "git push --force-with-lease" in a terminal.'
+    'Click Push to replace them: Git Steve offers a force push.'
   )
 }
 
@@ -449,19 +628,29 @@ export async function pull(repo: string): Promise<PullResult> {
   return { outcome: 'fast-forward', upstream }
 }
 
-/** Say in plain words why the remote refused a push, after fetching what it has. */
-async function rejectedPushMessage(repo: string, auth: string[], branchName: string, upstream: string): Promise<string> {
+/**
+ * Work out why the remote refused a push, after fetching what it has. If it only has old copies of
+ * commits the branch has since rewritten, a force push is what's needed; otherwise someone else
+ * pushed, and the advice is to pull.
+ */
+async function rejectedPush(repo: string, auth: string[], branchName: string, upstream: string): Promise<PushResult> {
   await runGit([...auth, 'fetch'], { cwd: repo })
   const unseen = await unseenUpstreamCommits(repo, branchName)
-  if (unseen === 0) return `Push refused: ${rewrittenMessage(upstream)}`
+  if (unseen === 0) {
+    const [expected, replaced] = await Promise.all([
+      runGit(['rev-parse', '--verify', '@{upstream}'], { cwd: repo }),
+      runGit(['rev-list', '--count', 'HEAD..@{upstream}', '--'], { cwd: repo })
+    ])
+    return { outcome: 'needs-force', upstream, expected: expected.stdout.trim(), replaced: Number(replaced.stdout.trim()) }
+  }
   const them = unseen === 1 ? 'it' : 'them'
-  return (
+  throw new Error(
     `Push refused: ${upstream} has ${commitCount(unseen)} that ${branchName} doesn’t, and pushing would throw ${them} ` +
-    `away. Click Pull to bring ${them} in (Git Steve asks whether to merge or rebase), then push again.`
+      `away. Click Pull to bring ${them} in (Git Steve asks whether to merge or rebase), then push again.`
   )
 }
 
-export async function push(repo: string): Promise<void> {
+export async function push(repo: string): Promise<PushResult> {
   const { branch } = await status(repo)
   if (branch.head === null) throw new Error('Cannot push a detached HEAD')
   const auth = await repoCredentialArgs(repo)
@@ -471,14 +660,90 @@ export async function push(repo: string): Promise<void> {
     } catch (error) {
       // git translates the reason after "[rejected]" but not the marker itself.
       if (!(error instanceof GitError) || !error.stderr.includes('[rejected]')) throw error
-      throw new Error(await rejectedPushMessage(repo, auth, branch.head, branch.upstream))
+      return rejectedPush(repo, auth, branch.head, branch.upstream)
     }
-    return
+    return { outcome: 'pushed' }
   }
   const names = (await remotes(repo)).map((r) => r.name)
   const remote = names.includes('origin') ? 'origin' : names[0]
   if (!remote) throw new Error('This repository has no remote to push to. Add one on the Remotes tab.')
   await runGit([...auth, 'push', '--set-upstream', remote, 'HEAD'], { cwd: repo })
+  return { outcome: 'pushed' }
+}
+
+async function configValue(repo: string, key: string): Promise<string | null> {
+  const { stdout } = await runGit(['config', '--get', key], { cwd: repo, allowedExitCodes: [0, 1] })
+  return stdout.trim() || null
+}
+
+/**
+ * Replace the current branch's upstream with the branch, but only while the upstream is still at
+ * `expected` (--force-with-lease): if anyone pushed since, git refuses instead of dropping their
+ * commits. The remote and branch are named explicitly, so push.default can't widen it to others.
+ */
+export async function forcePush(repo: string, expected: string): Promise<void> {
+  assertHash(expected)
+  const { branch } = await status(repo)
+  if (branch.head === null || !branch.upstream) throw new Error('Only a branch with an upstream can be force pushed')
+  const [remote, target] = await Promise.all([
+    configValue(repo, `branch.${branch.head}.remote`),
+    configValue(repo, `branch.${branch.head}.merge`)
+  ])
+  if (!remote || !target?.startsWith('refs/heads/')) throw new Error(`Can’t tell where ${branch.head} pushes to`)
+  const auth = await repoCredentialArgs(repo)
+  try {
+    await runGit([...auth, 'push', `--force-with-lease=${target}:${expected}`, remote, `HEAD:${target}`], { cwd: repo })
+  } catch (error) {
+    if (!(error instanceof GitError) || !error.stderr.includes('stale info')) throw error
+    throw new Error(
+      `Force push refused: someone pushed to ${branch.upstream} since you looked, and replacing the branch would ` +
+        'throw their commits away. Click Pull to bring them in first.'
+    )
+  }
+}
+
+/** A remote's default branch (what its HEAD points at), without the remote's name; null if unknown. */
+export async function remoteDefaultBranch(repo: string, remote: string): Promise<string | null> {
+  assertRemoteName(remote)
+  const head = await runGit(['symbolic-ref', '--quiet', '--short', `refs/remotes/${remote}/HEAD`], { cwd: repo, allowedExitCodes: [0, 1, 128] })
+  const name = head.stdout.trim()
+  if (head.exitCode === 0 && name.startsWith(`${remote}/`)) return name.slice(remote.length + 1)
+  for (const guess of ['main', 'master']) {
+    const found = await runGit(['rev-parse', '--verify', '--quiet', `refs/remotes/${remote}/${guess}`], { cwd: repo, allowedExitCodes: [0, 1] })
+    if (found.exitCode === 0) return guess
+  }
+  return null
+}
+
+/** Fetch one branch of a remote, updating its remote-tracking branch. */
+export async function fetchBranch(repo: string, remote: string, branchName: string): Promise<void> {
+  assertRemoteName(remote)
+  assertRevision(branchName)
+  const auth = await repoCredentialArgs(repo)
+  await runGit([...auth, 'fetch', remote, `+refs/heads/${branchName}:refs/remotes/${remote}/${branchName}`], { cwd: repo })
+}
+
+/**
+ * Fetch a pull request's commits from where the service keeps them (`refs/pull/12/head` and the
+ * like) and check them out as local branch `local`: a new one, or an existing one moved forward.
+ */
+export async function checkoutFetched(repo: string, remote: string, ref: string, local: string): Promise<void> {
+  assertRemoteName(remote)
+  if (!/^refs\/(pull|merge-requests)\/\d+\/head$/.test(ref)) throw new Error(`Not a pull request: ${ref}`)
+  assertRevision(local)
+  const auth = await repoCredentialArgs(repo)
+  await runGit([...auth, 'fetch', remote, ref], { cwd: repo })
+  const fetched = (await runGit(['rev-parse', '--verify', 'FETCH_HEAD^{commit}'], { cwd: repo })).stdout.trim()
+  if (!(await branches(repo)).some((b) => b.kind === 'local' && b.name === local)) {
+    await runGit(['switch', '-c', local, fetched], { cwd: repo })
+    return
+  }
+  await runGit(['switch', local], { cwd: repo })
+  try {
+    await runGit(['merge', '--ff-only', fetched], { cwd: repo })
+  } catch {
+    throw new Error(`Switched to ${local}, but couldn’t bring it up to date: it has commits the pull request doesn’t.`)
+  }
 }
 
 /** URL of `origin`, or null when there isn't one. */

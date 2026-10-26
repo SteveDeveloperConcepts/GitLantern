@@ -7,6 +7,7 @@ import type {
   FileStatusCode,
   RefLabel,
   RepoStatus,
+  Stash,
   StatusEntry
 } from '../../shared/types'
 
@@ -19,6 +20,8 @@ export const LOG_FORMAT = ['%H', '%P', '%an', '%ae', '%at', '%D', '%s'].join('%x
 export const DETAIL_FORMAT = ['%H', '%P', '%an', '%ae', '%at', '%D', '%B'].join('%x1f')
 /** `git for-each-ref --format` for {@link parseBranches}: NUL-separated fields, one line per ref. */
 export const BRANCH_FORMAT = '%(refname)%00%(objectname)%00%(upstream:short)%00%(HEAD)'
+/** `git stash list -z --format` for {@link parseStashes}: hash, reflog subject, date. */
+export const STASH_FORMAT = ['%H', '%gs', '%at'].join('%x1f')
 
 function statusCode(c: string | undefined): FileStatusCode | null {
   return c !== undefined && STATUS_CODES.has(c) ? (c as FileStatusCode) : null
@@ -114,6 +117,7 @@ export function parseStatus(stdout: string): RepoStatus {
 /** Parse `%D` from `git log --decorate=full`, e.g. `HEAD -> refs/heads/main, tag: refs/tags/v1`. */
 export function parseDecorations(decoration: string): RefLabel[] {
   const labels: RefLabel[] = []
+  const remoteHeads: string[] = []
   for (const part of decoration.split(', ')) {
     let ref = part.trim()
     if (!ref) continue
@@ -132,10 +136,17 @@ export function parseDecorations(decoration: string): RefLabel[] {
       labels.push({ name: ref.slice('refs/heads/'.length), kind: 'local', isCurrent })
     } else if (ref.startsWith('refs/remotes/')) {
       const name = ref.slice('refs/remotes/'.length)
-      if (!name.endsWith('/HEAD')) labels.push({ name, kind: 'remote' })
+      if (name.endsWith('/HEAD')) remoteHeads.push(name.slice(0, -'HEAD'.length))
+      else labels.push({ name, kind: 'remote' })
     } else if (ref.startsWith('refs/tags/')) {
       labels.push({ name: ref.slice('refs/tags/'.length), kind: 'tag' })
     }
+  }
+  // `origin/HEAD` is listed without its target, but it's always on the same commit as it. When that
+  // remote has one other branch here, that branch is the remote's default.
+  for (const prefix of remoteHeads) {
+    const candidates = labels.filter((label) => label.kind === 'remote' && label.name.startsWith(prefix))
+    if (candidates.length === 1 && candidates[0]) candidates[0].isDefault = true
   }
   return labels
 }
@@ -204,6 +215,24 @@ export function parseBranches(stdout: string): Branch[] {
     }
   }
   return branches
+}
+
+/**
+ * Parse `git stash list -z --format=<STASH_FORMAT>`, newest (stash@{0}) first. The subject is
+ * "On main: <message>" when a message was given and "WIP on main: <hash> <subject>" otherwise.
+ */
+export function parseStashes(stdout: string): Stash[] {
+  return stdout
+    .split('\0')
+    .map((record) => record.replace(/^\n/, ''))
+    .filter(Boolean)
+    .map((record) => {
+      const [hash = '', subject = '', date = '0'] = record.split(FIELD)
+      const match = /^(WIP on|On) ([^:]*): ([\s\S]*)$/.exec(subject)
+      const branch = match?.[2] && match[2] !== '(no branch)' ? match[2] : null
+      const message = !match ? subject : match[1] === 'On' ? (match[3] ?? '') : `WIP on ${match[2]}: ${(match[3] ?? '').replace(/^[0-9a-f]+ /, '')}`
+      return { hash, message, branch, date: Number(date) }
+    })
 }
 
 export interface Remote {

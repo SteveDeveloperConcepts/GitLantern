@@ -56,7 +56,7 @@ export async function setupAskPass(options: {
       const credential = parseCredentialPrompt(prompt)
       const account = credential ? options.accounts.findByHost(credential.host) : undefined
       if (credential && account) {
-        const answer = credential.kind === 'username' ? account.gitUsername : options.accounts.token(account.id)
+        const answer = credential.kind === 'username' ? account.gitUsername : await options.accounts.freshToken(account.id)
         if (answer) return answer
       }
 

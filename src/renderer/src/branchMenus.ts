@@ -14,6 +14,8 @@ export interface MenuContext {
   current: string | null
   headHash: string | null
   operation: RepoOperation | undefined
+  /** Commits the checked-out branch already has, as far as the history goes. */
+  onCurrent?: ReadonlySet<string>
 }
 
 export interface MenuActions {
@@ -21,6 +23,7 @@ export interface MenuActions {
   integrate(kind: IntegrateKind, target: RefTarget): void
   createBranchAt(target: RefTarget): void
   copyHash(hash: string): void
+  cherryPick(hash: string): void
 }
 
 export const OPERATION_NAMES: Record<RepoOperation['kind'], string> = {
@@ -71,9 +74,17 @@ export function branchItems(branch: Branch, ctx: MenuContext, actions: MenuActio
   ]
 }
 
-function commitItems(hash: string, actions: MenuActions): MenuItem[] {
+function commitItems(hash: string, ctx: MenuContext, actions: MenuActions): MenuItem[] {
   const short = hash.slice(0, 7)
+  const blocked = blockedReason(ctx) ?? (ctx.onCurrent?.has(hash) ? `Already on ${ctx.current ?? 'HEAD'}` : undefined)
   return [
+    {
+      key: 'cherry-pick',
+      label: `Cherry-pick commit ${short} onto ${ctx.current ?? 'HEAD'}`,
+      disabled: blocked !== undefined,
+      ...(blocked ? { hint: blocked } : {}),
+      onSelect: () => actions.cherryPick(hash)
+    },
     { key: 'branch', label: 'Create branch here…', onSelect: () => actions.createBranchAt({ ref: hash, label: `commit ${short}` }) },
     { key: 'copy', label: 'Copy commit hash', hint: short, onSelect: () => actions.copyHash(hash) }
   ]
@@ -96,5 +107,5 @@ export function commitMenu(hash: string, branchesHere: Branch[], ctx: MenuContex
   if (groups.length === 0 && hash !== ctx.headHash) {
     groups.push(integrateItems({ ref: hash, label: `commit ${hash.slice(0, 7)}` }, ctx, actions))
   }
-  return [...groups, commitItems(hash, actions)]
+  return [...groups, commitItems(hash, ctx, actions)]
 }

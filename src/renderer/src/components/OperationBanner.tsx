@@ -15,7 +15,7 @@ interface Props {
 }
 
 /** A branch that points at the commit (a local one first), or else its short hash. */
-function nameFor(hash: string, branches: Branch[]): string {
+export function nameFor(hash: string, branches: Branch[]): string {
   const branch = branches.find((b) => b.hash === hash && b.kind === 'local') ?? branches.find((b) => b.hash === hash)
   return branch?.name ?? hash.slice(0, 7)
 }
@@ -45,7 +45,7 @@ export function OperationBanner({ operation, current, conflicts, branches, busy,
         <strong>{title(operation, current, branches)}</strong>
         <span>
           {conflicts > 0
-            ? `${conflicts} file${conflicts === 1 ? ' has' : 's have'} conflicts. Fix ${conflicts === 1 ? 'it' : 'them'} in your editor (look for the <<<<<<< markers), then stage ${conflicts === 1 ? 'it' : 'them'} on the Changes tab.`
+            ? `${conflicts} file${conflicts === 1 ? ' has' : 's have'} conflicts. Open ${conflicts === 1 ? 'it' : 'each'} on the Changes tab and pick a side for every conflict, or fix ${conflicts === 1 ? 'it' : 'them'} in your editor and stage ${conflicts === 1 ? 'it' : 'them'}.`
             : `All conflicts are resolved. ${merge ? 'Finish the merge to commit it.' : 'Continue to carry on.'}`}
         </span>
       </div>

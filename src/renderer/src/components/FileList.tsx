@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { splitPath } from '../format'
 
 export interface FileListItem {
@@ -10,14 +11,23 @@ export interface FileListItem {
   deletions?: number | null
 }
 
+export interface FileAction {
+  label: ReactNode
+  title: string
+  run(item: FileListItem): void
+  /** Leave it out for some items. */
+  hidden?(item: FileListItem): boolean
+}
+
 interface Props {
   items: FileListItem[]
   selectedKey?: string | null
   onOpen(item: FileListItem): void
-  action?: { label: string; title: string; run(item: FileListItem): void }
+  /** Buttons that appear on hover, right to left in reverse order. */
+  actions?: FileAction[]
 }
 
-export function FileList({ items, selectedKey, onOpen, action }: Props) {
+export function FileList({ items, selectedKey, onOpen, actions = [] }: Props) {
   return (
     <ul className="file-list">
       {items.map((item) => {
@@ -45,10 +55,22 @@ export function FileList({ items, selectedKey, onOpen, action }: Props) {
                   </span>
                 ))}
             </button>
-            {action && (
-              <button className="file-action" title={`${action.title} ${base}`} aria-label={`${action.title} ${item.path}`} onClick={() => action.run(item)}>
-                {action.label}
-              </button>
+            {actions.length > 0 && (
+              <span className="file-actions">
+                {actions
+                  .filter((action) => !action.hidden?.(item))
+                  .map((action) => (
+                    <button
+                      key={action.title}
+                      className="file-action"
+                      title={`${action.title} ${base}`}
+                      aria-label={`${action.title} ${item.path}`}
+                      onClick={() => action.run(item)}
+                    >
+                      {action.label}
+                    </button>
+                  ))}
+              </span>
             )}
           </li>
         )

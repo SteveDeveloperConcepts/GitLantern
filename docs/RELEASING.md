@@ -16,8 +16,8 @@ The store commands check your setup first and stop with a message saying what's 
 
 **Before every release:**
 
-1. Raise `version` in `package.json`. Both stores reject an upload whose version isn't higher than
-   the last one.
+1. Raise `version` in `package.json` (`yarn release` does this for GitHub releases). Both stores reject
+   an upload whose version isn't higher than the last one.
 2. Run `yarn typecheck` and `yarn test`.
 
 The app icon is `build/icon.png` (macOS) and `build/icon.ico` (Windows). The Store tile images are in
@@ -28,46 +28,57 @@ The app icon is `build/icon.png` (macOS) and `build/icon.ico` (Windows). The Sto
 
 ## GitHub releases
 
-Pushing a version tag builds the Windows and macOS installers on GitHub's servers and publishes them as a
-release, so you don't need a Mac to ship the Mac version.
+`yarn release` publishes a new version. It raises the version in `package.json`, commits it, tags the
+commit with your release notes, and pushes the commit and tag together. The tag starts the **Release**
+workflow, which builds the Windows and macOS installers on GitHub's servers and publishes them. You don't
+need a Mac to ship the Mac version.
 
-1. Raise `version` in `package.json` (for example to `0.3.0`), then commit and push.
-2. Tag that commit with a message saying what's new, and push the tag. The tag must be `v` plus the
-   version:
+1. Commit and push the work you're releasing. Run `yarn typecheck` and `yarn test`.
+2. Run `yarn release` with the new version, then one quoted line for each change. Each line appears under
+   **What's new** on the release page:
 
-   ```bash
-   git tag -a v0.3.0 -m "Git Steve 0.3.0" -m "- Stash your changes from the Changes tab
-   - Faster commit graph on large repositories"
-   git push origin v0.3.0
+   ```
+   yarn release <new version> "<what changed>" "<what else changed>"
    ```
 
-   The first `-m` is only a title. The second becomes the release's **What's new** section. Keep each
-   item on one line, because GitHub shows every line break in release notes. To write the message in
-   your editor instead, run `git tag -a v0.3.0` on its own. Put the title on the first line, then a blank
-   line, then what's new. A tag made without `-a` still works, but its release has no What's new
-   section.
+   Replace each `<…>`, angle brackets included, with your own text:
+   - the version: three numbers, higher than the one in `package.json`
+   - each change: one short sentence written for the people who use Git Steve
 
-3. Follow the **Release** workflow on the repository's **Actions** tab. It type-checks and tests on Windows
-   and macOS, then builds:
+   Add `--dry-run` to see the plan and the release notes without changing anything.
+
+   Before it changes anything, it checks that:
+   - the version is higher than the current one
+   - you have no uncommitted changes
+   - nobody has pushed to the branch since you last pulled
+   - the tag doesn't exist yet
+
+   If a check fails, it says what's wrong and changes nothing.
+
+3. Follow the **Release** workflow on the repository's **Actions** tab. `yarn release` prints the link. The
+   workflow type-checks and tests on Windows and macOS, then builds:
    - `GitSteve-Setup-<version>.exe` for Windows
    - `GitSteve-<version>-arm64.dmg` and `GitSteve-<version>-x64.dmg` for Apple silicon and Intel Macs
 
    It then publishes the release. The release notes contain:
-   - **What's new**, from the tag message
+   - **What's new**, from your lines
    - the download notes from `.github/release-notes.md`
    - a link to every change since the last release
 
    It takes about 3 minutes.
 
-If a step fails, nothing is published. Fix the problem, then move the tag to the new commit with the same
-message, and push it again:
+**If the build fails**, nothing is published. Delete the tag on GitHub and on your computer, replacing
+`<version>` with the version you released:
 
-```bash
-git tag -f -a v0.3.0 -m "Git Steve 0.3.0" -m "- Stash your changes from the Changes tab"
-git push -f origin v0.3.0
+```
+git push origin :refs/tags/v<version>
+git tag -d v<version>
 ```
 
-Once a release is published, re-tagging doesn't change it. To change its notes, open the release on
+Then fix the problem, commit and push the fix, and run `yarn release` again with the same version and
+notes. `package.json` already has that version, so this time it only tags and pushes.
+
+Once a release is published, it can't be replaced this way. To change its notes, open the release on
 GitHub and click **Edit**.
 
 **Signing.** These builds have no publisher certificate: the Windows installer is unsigned, and the Mac app

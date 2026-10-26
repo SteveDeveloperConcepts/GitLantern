@@ -1,3 +1,4 @@
+import type { ConflictChoice } from './conflicts'
 import type { ProviderId } from './providers'
 import type { RemoteProtocol } from './remoteUrl'
 
@@ -60,6 +61,53 @@ export interface PullResult {
   upstream: string
 }
 
+/**
+ * What Push did. `needs-force`: the remote branch only has old copies of commits that were rewritten
+ * since (rebased, amended), so nothing was pushed. A force push would replace them.
+ */
+export type PushResult =
+  | { outcome: 'pushed' }
+  | {
+      outcome: 'needs-force'
+      /** The remote branch, e.g. `origin/main`. */
+      upstream: string
+      /** Where the remote branch is now. The force push goes ahead only while it's still there. */
+      expected: string
+      /** Commits on the remote branch that the force push would replace. */
+      replaced: number
+    }
+
+/** A stashed set of changes. */
+export interface Stash {
+  hash: string
+  /** The message given when stashing, or git's "WIP on main: …" when there was none. */
+  message: string
+  /** The branch it was made on, or null on a detached HEAD. */
+  branch: string | null
+  /** Unix seconds. */
+  date: number
+}
+
+/** Narrows the history. Without one, every branch is shown. */
+export interface LogFilter {
+  /** Only commits on this branch. */
+  branch?: string
+  /** Only commits that changed this file or folder. */
+  path?: string
+}
+
+/** Which part of a diff a patch from `selectLines` changes. */
+export type PatchAction = 'stage' | 'unstage' | 'discard'
+
+/** One conflict in a file, and the side to keep. */
+export interface ConflictPick {
+  /** Which conflict, counting from 0 at the top of the file. */
+  index: number
+  choice: ConflictChoice
+  /** How many conflicts the file had when the user picked, to notice it changed on disk since. */
+  conflicts: number
+}
+
 /** The current branch compared with another branch or commit, for the merge and rebase dialogs. */
 export interface BranchComparison {
   /** Commits on the current branch that the other one doesn't have. */
@@ -77,6 +125,8 @@ export interface RefLabel {
   kind: RefKind
   /** True for the branch HEAD points at. */
   isCurrent?: boolean
+  /** True for the remote branch its remote's HEAD points at: that remote's default branch. */
+  isDefault?: boolean
 }
 
 export interface Commit {
@@ -98,6 +148,8 @@ export interface ChangedFile {
   /** Lines added and removed; null for binary files. */
   additions?: number | null
   deletions?: number | null
+  /** A stash only: a file that was untracked when it was stashed. */
+  untracked?: boolean
 }
 
 export interface CommitDetail extends Commit {
@@ -134,6 +186,56 @@ export interface Account {
   gitUsername: string
   organization?: string
   email?: string
+  /** Signed in through the browser (OAuth) rather than with a pasted token. */
+  oauth?: boolean
+  /** OAuth only: when the token runs out, in unix milliseconds. It's renewed shortly before. */
+  expiresAt?: number
+}
+
+/** Shown while a browser sign-in waits for the user. */
+export interface SignInProgress {
+  /** The page the browser was sent to. */
+  url: string
+  /** Device sign-in (GitHub): the code to enter on that page. */
+  userCode?: string
+}
+
+/** An open pull request (merge request on GitLab). */
+export interface PullRequest {
+  number: number
+  title: string
+  author: string
+  sourceBranch: string
+  targetBranch: string
+  /** False when it comes from a fork. */
+  sameRepo: boolean
+  draft: boolean
+  /** Its page on the service. */
+  url: string
+  /** Unix milliseconds. */
+  updatedAt: number | null
+}
+
+export interface PullRequestList {
+  /** The remote they were looked up for, or null when the repository has none. */
+  remote: string | null
+  /** GitHub, GitLab… */
+  service: string
+  /** What the service calls them. */
+  noun: 'pull request' | 'merge request'
+  /** Why nothing could be listed: no account for the remote's server, or a server without a known API. */
+  unavailable?: 'no-remote' | 'no-account' | 'unsupported'
+  items: PullRequest[]
+  /** The remote's default branch, the usual target for a new one. */
+  defaultBranch: string | null
+}
+
+export interface NewPullRequest {
+  title: string
+  description: string
+  /** Branch names on the remote. */
+  source: string
+  target: string
 }
 
 export interface AccountInput {
@@ -193,6 +295,8 @@ export type DiffTarget =
   | { kind: 'worktree'; path: string; untracked?: boolean; conflicted?: boolean }
   | { kind: 'index'; path: string }
   | { kind: 'commit'; hash: string; path: string }
+  /** `untracked`: a file the stash saved from outside git's tracking. */
+  | { kind: 'stash'; hash: string; path: string; untracked?: boolean }
 
 export interface AskPassRequest {
   id: string
@@ -243,6 +347,19 @@ export interface GitSteveApi {
     connect(input: AccountInput): Promise<Account>
     remove(id: string): Promise<void>
     repos(id: string): Promise<HostedRepo[]>
+    /** Servers Git Steve can sign in to through the browser, instead of with a token. */
+    browserSignInHosts(): Promise<string[]>
+    /** Sign in through the browser; resolves once the user has approved Git Steve there. */
+    signIn(provider: ProviderId, host: string): Promise<Account>
+    cancelSignIn(): Promise<void>
+    onSignInProgress(callback: (progress: SignInProgress) => void): () => void
+  }
+  pullRequests: {
+    /** Open pull requests on the service that hosts the repository's remote. */
+    list(repo: string): Promise<PullRequestList>
+    create(repo: string, input: NewPullRequest): Promise<PullRequest>
+    /** Check out a pull request's branch; returns the local branch's name. */
+    checkout(repo: string, number: number): Promise<string>
   }
   ssh: {
     key(): Promise<SshKeyInfo | null>
@@ -254,12 +371,20 @@ export interface GitSteveApi {
   }
   git: {
     status(repo: string): Promise<RepoStatus>
-    log(repo: string, maxCount?: number): Promise<Commit[]>
+    log(repo: string, filter?: LogFilter): Promise<Commit[]>
     branches(repo: string): Promise<Branch[]>
     show(repo: string, hash: string): Promise<CommitDetail>
     diff(repo: string, target: DiffTarget): Promise<string>
     stage(repo: string, paths: string[]): Promise<void>
     unstage(repo: string, paths: string[]): Promise<void>
+    /** Throw away uncommitted changes to these files. Untracked ones go to the trash. */
+    discard(repo: string, paths: string[]): Promise<void>
+    /** Stage, unstage or discard some of a file's changes: a patch made by `selectLines` for that file. */
+    applyPatch(repo: string, path: string, patch: string, action: PatchAction): Promise<void>
+    /** Keep one side of a conflict in a file. The file is staged once no conflicts are left. */
+    resolveConflict(repo: string, path: string, pick: ConflictPick): Promise<{ remaining: number }>
+    /** Take one side's whole version of a conflicted file, and stage it. */
+    resolveFile(repo: string, path: string, side: 'ours' | 'theirs'): Promise<void>
     commit(repo: string, message: string): Promise<void>
     checkout(repo: string, branch: Pick<Branch, 'name' | 'kind'>): Promise<void>
     createBranch(repo: string, name: string, startPoint?: string): Promise<void>
@@ -268,6 +393,8 @@ export interface GitSteveApi {
     merge(repo: string, ref: string, options?: { noFastForward?: boolean }): Promise<OperationResult>
     /** Replay the current branch's own commits on top of a branch or commit. */
     rebase(repo: string, onto: string): Promise<OperationResult>
+    /** Copy a commit onto the current branch. */
+    cherryPick(repo: string, hash: string): Promise<OperationResult>
     /** Finish the stopped merge, rebase, cherry-pick or revert once its conflicts are staged. */
     continueOperation(repo: string): Promise<OperationResult>
     /** Rebase, cherry-pick or revert only: drop the commit that conflicted and go on. */
@@ -275,7 +402,18 @@ export interface GitSteveApi {
     abortOperation(repo: string): Promise<void>
     fetch(repo: string): Promise<void>
     pull(repo: string): Promise<PullResult>
-    push(repo: string): Promise<void>
+    push(repo: string): Promise<PushResult>
+    /** Replace the remote branch with the current one, as long as it's still at `expected`. */
+    forcePush(repo: string, expected: string): Promise<void>
+    /** Newest first. */
+    stashes(repo: string): Promise<Stash[]>
+    /** Stash every uncommitted change, untracked files included. */
+    stash(repo: string, message: string): Promise<void>
+    /** Bring a stash's changes back. `pop` also deletes it, unless it stops on conflicts. */
+    applyStash(repo: string, hash: string, options: { pop: boolean }): Promise<OperationResult>
+    dropStash(repo: string, hash: string): Promise<void>
+    /** A stash's changes, like a commit's. */
+    showStash(repo: string, hash: string): Promise<CommitDetail>
   }
   askpass: {
     onRequest(callback: (request: AskPassRequest) => void): () => void

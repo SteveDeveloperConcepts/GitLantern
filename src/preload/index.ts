@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import { Events, Invoke } from '../shared/ipc'
-import type { AskPassRequest, CloneProgress, GitSteveApi, IpcResult, RepoChangedEvent } from '../shared/types'
+import type { AskPassRequest, CloneProgress, GitSteveApi, IpcResult, RepoChangedEvent, SignInProgress } from '../shared/types'
 
 async function call<T>(channel: string, ...args: unknown[]): Promise<T> {
   const result = (await ipcRenderer.invoke(channel, ...args)) as IpcResult<T>
@@ -38,7 +38,16 @@ const api: GitSteveApi = {
     list: () => call(Invoke.accountsList),
     connect: (input) => call(Invoke.accountsConnect, input),
     remove: (id) => call(Invoke.accountsRemove, id),
-    repos: (id) => call(Invoke.accountsRepos, id)
+    repos: (id) => call(Invoke.accountsRepos, id),
+    browserSignInHosts: () => call(Invoke.accountsBrowserSignInHosts),
+    signIn: (provider, host) => call(Invoke.accountsSignIn, provider, host),
+    cancelSignIn: () => call(Invoke.accountsCancelSignIn),
+    onSignInProgress: (callback) => subscribe<SignInProgress>(Events.signInProgress, callback)
+  },
+  pullRequests: {
+    list: (repo) => call(Invoke.pullRequestsList, repo),
+    create: (repo, input) => call(Invoke.pullRequestsCreate, repo, input),
+    checkout: (repo, number) => call(Invoke.pullRequestsCheckout, repo, number)
   },
   ssh: {
     key: () => call(Invoke.sshKey),
@@ -50,24 +59,35 @@ const api: GitSteveApi = {
   },
   git: {
     status: (repo) => call(Invoke.gitStatus, repo),
-    log: (repo, maxCount) => call(Invoke.gitLog, repo, maxCount),
+    log: (repo, filter) => call(Invoke.gitLog, repo, filter),
     branches: (repo) => call(Invoke.gitBranches, repo),
     show: (repo, hash) => call(Invoke.gitShow, repo, hash),
     diff: (repo, target) => call(Invoke.gitDiff, repo, target),
     stage: (repo, paths) => call(Invoke.gitStage, repo, paths),
     unstage: (repo, paths) => call(Invoke.gitUnstage, repo, paths),
+    discard: (repo, paths) => call(Invoke.gitDiscard, repo, paths),
+    applyPatch: (repo, path, patch, action) => call(Invoke.gitApplyPatch, repo, path, patch, action),
+    resolveConflict: (repo, path, pick) => call(Invoke.gitResolveConflict, repo, path, pick),
+    resolveFile: (repo, path, side) => call(Invoke.gitResolveFile, repo, path, side),
     commit: (repo, message) => call(Invoke.gitCommit, repo, message),
     checkout: (repo, branch) => call(Invoke.gitCheckout, repo, { name: branch.name, kind: branch.kind }),
     createBranch: (repo, name, startPoint) => call(Invoke.gitCreateBranch, repo, name, startPoint),
     compare: (repo, ref) => call(Invoke.gitCompare, repo, ref),
     merge: (repo, ref, options) => call(Invoke.gitMerge, repo, ref, options),
     rebase: (repo, onto) => call(Invoke.gitRebase, repo, onto),
+    cherryPick: (repo, hash) => call(Invoke.gitCherryPick, repo, hash),
     continueOperation: (repo) => call(Invoke.gitContinue, repo),
     skipOperation: (repo) => call(Invoke.gitSkip, repo),
     abortOperation: (repo) => call(Invoke.gitAbort, repo),
     fetch: (repo) => call(Invoke.gitFetch, repo),
     pull: (repo) => call(Invoke.gitPull, repo),
-    push: (repo) => call(Invoke.gitPush, repo)
+    push: (repo) => call(Invoke.gitPush, repo),
+    forcePush: (repo, expected) => call(Invoke.gitForcePush, repo, expected),
+    stashes: (repo) => call(Invoke.gitStashes, repo),
+    stash: (repo, message) => call(Invoke.gitStash, repo, message),
+    applyStash: (repo, hash, options) => call(Invoke.gitApplyStash, repo, hash, options),
+    dropStash: (repo, hash) => call(Invoke.gitDropStash, repo, hash),
+    showStash: (repo, hash) => call(Invoke.gitShowStash, repo, hash)
   },
   askpass: {
     onRequest: (callback) => subscribe<AskPassRequest>(Events.askpassRequest, callback),

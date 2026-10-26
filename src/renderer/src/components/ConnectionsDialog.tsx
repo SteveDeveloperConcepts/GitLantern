@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { PROVIDERS, providerInfo, normalizeHost, type ProviderId } from '../../../shared/providers'
-import type { Account, ConnectionTest, SshKeyInfo } from '../../../shared/types'
+import type { Account, ConnectionTest, SignInProgress, SshKeyInfo } from '../../../shared/types'
 import { errorMessage } from '../format'
 import { Icon } from './Icon'
 import { Modal } from './Modal'
@@ -21,8 +21,12 @@ interface Props {
 export function ConnectionsDialog({ onClose, onChanged, initialProvider }: Props) {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [provider, setProvider] = useState<ProviderId | null>(initialProvider ?? null)
+  const [browserHosts, setBrowserHosts] = useState<string[]>([])
   const reload = () => void api.accounts.list().then(setAccounts)
   useEffect(reload, [])
+  useEffect(() => {
+    void api.accounts.browserSignInHosts().then(setBrowserHosts)
+  }, [])
 
   return (
     <Modal title="Git services" onClose={onClose} className="modal-split">
@@ -41,6 +45,7 @@ export function ConnectionsDialog({ onClose, onChanged, initialProvider }: Props
                     <span className="dim">
                       {providerInfo(account.provider).name} · {account.host}
                       {account.organization ? ` · ${account.organization}` : ''}
+                      {account.oauth ? ' · signed in with the browser' : ''}
                     </span>
                   </span>
                   <span className="status-ok">
@@ -82,6 +87,7 @@ export function ConnectionsDialog({ onClose, onChanged, initialProvider }: Props
             <ConnectForm
               key={provider}
               provider={provider}
+              browserHosts={browserHosts}
               onCancel={() => setProvider(null)}
               onConnected={() => {
                 setProvider(null)
@@ -109,14 +115,28 @@ export function ConnectionsDialog({ onClose, onChanged, initialProvider }: Props
   )
 }
 
-function ConnectForm({ provider, onCancel, onConnected }: { provider: ProviderId; onCancel(): void; onConnected(): void }) {
+interface ConnectFormProps {
+  provider: ProviderId
+  /** Servers with browser sign-in. */
+  browserHosts: string[]
+  onCancel(): void
+  onConnected(): void
+}
+
+function ConnectForm({ provider, browserHosts, onCancel, onConnected }: ConnectFormProps) {
   const info = providerInfo(provider)
   const [host, setHost] = useState(info.defaultHost)
   const [token, setToken] = useState('')
   const [organization, setOrganization] = useState('')
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
-  const [state, setState] = useState<'idle' | 'checking' | { error: string }>('idle')
+  const [state, setState] = useState<'idle' | 'checking' | 'browser' | { error: string }>('idle')
+  const [progress, setProgress] = useState<SignInProgress | null>(null)
+  const [copied, setCopied] = useState(false)
+  useEffect(() => api.accounts.onSignInProgress(setProgress), [])
+  // Leaving the form gives up on a sign-in still waiting for the browser.
+  useEffect(() => () => void api.accounts.cancelSignIn(), [])
+  const browserSignIn = info.browserSignIn !== undefined && browserHosts.includes(normalizeHost(host))
 
   const tokenUrl = info.tokenUrl(normalizeHost(host), organization.trim() || undefined)
   const ready =
@@ -136,6 +156,56 @@ function ConnectForm({ provider, onCancel, onConnected }: { provider: ProviderId
     }
   }
 
+  const signIn = async () => {
+    setState('browser')
+    setProgress(null)
+    setCopied(false)
+    try {
+      await api.accounts.signIn(provider, host)
+      onConnected()
+    } catch (error) {
+      const message = errorMessage(error)
+      setState(message === 'Sign-in cancelled' ? 'idle' : { error: message })
+    }
+  }
+
+  if (state === 'browser') {
+    return (
+      <div className="form">
+        <h3 className="form-title">Sign in to {info.name}</h3>
+        {progress?.userCode ? (
+          <>
+            <p className="dialog-text">Your browser opened {new URL(progress.url).host}. Enter this code there, then approve Git Steve:</p>
+            <div className="user-code mono selectable">{progress.userCode}</div>
+            <div className="row-wrap">
+              <button onClick={() => void api.clipboard.write(progress.userCode ?? '').then(() => setCopied(true))}>
+                <Icon name={copied ? 'check' : 'copy'} size={15} /> {copied ? 'Copied' : 'Copy code'}
+              </button>
+              <a href={progress.url} target="_blank" rel="noreferrer">
+                Open the page again
+              </a>
+            </div>
+          </>
+        ) : (
+          <p className="dialog-text">
+            <span className="spinner" /> Finish signing in in your browser, then come back here.{' '}
+            {progress && (
+              <a href={progress.url} target="_blank" rel="noreferrer">
+                Open the page again
+              </a>
+            )}
+          </p>
+        )}
+        <p className="field-hint">Git Steve waits for {info.name} to confirm. The token it gets is encrypted with your system keychain.</p>
+        <div className="modal-actions">
+          <button type="button" onClick={() => void api.accounts.cancelSignIn()}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <form
       className="form"
@@ -145,6 +215,14 @@ function ConnectForm({ provider, onCancel, onConnected }: { provider: ProviderId
       }}
     >
       <h3 className="form-title">Connect {info.name}</h3>
+      {browserSignIn && (
+        <>
+          <button type="button" className="primary large" onClick={() => void signIn()}>
+            Sign in with {info.name} in your browser
+          </button>
+          <div className="or-divider">or use an access token</div>
+        </>
+      )}
       {info.hostEditable && (
         <div className="field">
           <label htmlFor="connect-host">Server</label>

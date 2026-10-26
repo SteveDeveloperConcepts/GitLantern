@@ -1,5 +1,6 @@
 import type { ProviderId } from '../../shared/providers'
-import type { HostedRepo } from '../../shared/types'
+import { hostName, parseRemoteUrl } from '../../shared/remoteUrl'
+import type { HostedRepo, NewPullRequest, PullRequest } from '../../shared/types'
 
 /** What we learn about an account when its token is checked. */
 export interface VerifiedAccount {
@@ -13,6 +14,8 @@ export interface ApiAccount {
   organization?: string
   email?: string
   username?: string
+  /** The token came from a browser sign-in (OAuth), which some services send differently. */
+  oauth?: boolean
 }
 
 const TIMEOUT_MS = 20_000
@@ -40,24 +43,44 @@ function authHeaders(account: ApiAccount, token: string): Record<string, string>
     case 'github':
       return { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
     case 'gitlab':
-      return { 'PRIVATE-TOKEN': token }
+      return account.oauth ? { Authorization: `Bearer ${token}` } : { 'PRIVATE-TOKEN': token }
     case 'bitbucket':
       return { Authorization: basic(account.email ?? '') }
     case 'azure':
       return { Authorization: basic('') }
     case 'gitea':
-      return { Authorization: `token ${token}` }
+      return { Authorization: `${account.oauth ? 'Bearer' : 'token'} ${token}` }
     case 'generic':
       return {}
   }
 }
 
-async function getJson(account: ApiAccount, token: string, path: string): Promise<unknown> {
-  const url = apiBase(account) + path
+type Json = Record<string, unknown>
+
+/** The explanation in a service's error response, in whichever shape that service uses. */
+function errorText(body: unknown): string {
+  const json = obj(body)
+  const errors = list(json.errors)
+    .map((error) => str(error.message))
+    .filter(Boolean)
+  if (errors.length > 0) return errors.join(' ')
+  if (Array.isArray(json.message)) return json.message.filter((m) => typeof m === 'string').join(' ')
+  return str(json.message) || str(obj(json.error).message) || str(json.error) || str(json.error_description)
+}
+
+/** Call the service's API: `path` is relative to its API base, or a full https:// address. */
+async function request(account: ApiAccount, token: string, path: string, body?: Json): Promise<unknown> {
+  const url = path.startsWith('https://') ? path : apiBase(account) + path
   let response: Response
   try {
     response = await fetch(url, {
-      headers: { 'User-Agent': 'GitSteve', ...authHeaders(account, token) },
+      method: body ? 'POST' : 'GET',
+      headers: {
+        'User-Agent': 'GitSteve',
+        ...authHeaders(account, token),
+        ...(body ? { 'Content-Type': 'application/json' } : {})
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
       signal: AbortSignal.timeout(TIMEOUT_MS)
     })
   } catch {
@@ -66,11 +89,15 @@ async function getJson(account: ApiAccount, token: string, path: string): Promis
   if (response.status === 401) throw new Error('The service rejected this token (401). Check it was copied in full and hasn’t expired.')
   if (response.status === 403) throw new Error('The token works but lacks a permission it needs (403). Recreate it with the scopes listed.')
   if (response.status === 404) throw new Error('Not found (404). Check the server address or organization.')
-  if (!response.ok) throw new Error(`The service answered ${response.status} ${response.statusText}.`)
+  if (!response.ok) {
+    const detail = errorText(await response.json().catch(() => null))
+    throw new Error(`The service answered ${response.status} ${response.statusText}.${detail ? ` ${detail}` : ''}`)
+  }
   return response.json()
 }
 
-type Json = Record<string, unknown>
+const getJson = (account: ApiAccount, token: string, path: string): Promise<unknown> => request(account, token, path)
+
 const str = (value: unknown): string => (typeof value === 'string' ? value : '')
 const time = (value: unknown): number | null => {
   const parsed = typeof value === 'string' ? Date.parse(value) : NaN
@@ -187,4 +214,154 @@ export async function listRepos(account: ApiAccount, token: string): Promise<Hos
     case 'generic':
       return []
   }
+}
+
+/** Where the API keeps a repository's pull requests, and its web page, for a remote address. */
+interface RepoApi {
+  base: string
+  web: string
+}
+
+export function repoApi(account: ApiAccount, url: string): RepoApi | null {
+  const parsed = parseRemoteUrl(url)
+  if (!parsed || parsed.protocol === 'file') return null
+  // Addresses may already be percent-encoded ("Web%20Team"); decode once so nothing is encoded twice.
+  const decode = (segment: string): string => {
+    try {
+      return decodeURIComponent(segment)
+    } catch {
+      return segment
+    }
+  }
+  const segments = parsed.path.replace(/\.git\/?$/i, '').replace(/\/+$/, '').split('/').filter(Boolean).map(decode)
+  const encoded = segments.map(encodeURIComponent)
+  const host = hostName(parsed.host)
+  const lastTwo = encoded.slice(-2).join('/')
+  if (segments.length < 2) return null
+  switch (account.provider) {
+    case 'github':
+    case 'gitea':
+      return { base: `/repos/${lastTwo}`, web: `https://${account.host}/${lastTwo}` }
+    case 'bitbucket':
+      return { base: `/repositories/${lastTwo}`, web: `https://bitbucket.org/${lastTwo}` }
+    case 'gitlab':
+      return { base: `/projects/${encodeURIComponent(segments.join('/'))}`, web: `https://${account.host}/${encoded.join('/')}` }
+    case 'azure': {
+      // https://dev.azure.com/org/project/_git/repo, or git@ssh.dev.azure.com:v3/org/project/repo
+      const [organization, project, repo] =
+        host === 'ssh.dev.azure.com' ? encoded.slice(1, 4) : [encoded[0], encoded[1], encoded[3]]
+      if (!organization || !project || !repo || (host !== 'ssh.dev.azure.com' && segments[2] !== '_git')) return null
+      if (decode(organization).toLowerCase() !== (account.organization ?? '').toLowerCase()) return null
+      const site = `https://dev.azure.com/${organization}/${project}`
+      return { base: `${site}/_apis/git/repositories/${repo}`, web: `${site}/_git/${repo}` }
+    }
+    case 'generic':
+      return null
+  }
+}
+
+const WIP_TITLE = /^\s*(\[?(wip|draft)\]?:?)\s/i
+const branchName = (ref: string): string => ref.replace(/^refs\/heads\//, '')
+
+function toPullRequest(account: ApiAccount, item: Json, web: string): PullRequest {
+  switch (account.provider) {
+    case 'gitlab':
+      return {
+        number: Number(item.iid),
+        title: str(item.title),
+        author: str(obj(item.author).username) || str(obj(item.author).name),
+        sourceBranch: str(item.source_branch),
+        targetBranch: str(item.target_branch),
+        sameRepo: item.source_project_id === item.target_project_id,
+        draft: item.draft === true || item.work_in_progress === true,
+        url: str(item.web_url),
+        updatedAt: time(item.updated_at)
+      }
+    case 'bitbucket': {
+      const source = obj(item.source)
+      const destination = obj(item.destination)
+      return {
+        number: Number(item.id),
+        title: str(item.title),
+        author: str(obj(item.author).display_name) || str(obj(item.author).nickname),
+        sourceBranch: str(obj(source.branch).name),
+        targetBranch: str(obj(destination.branch).name),
+        sameRepo: str(obj(source.repository).full_name) === str(obj(destination.repository).full_name),
+        draft: item.draft === true,
+        url: str(obj(obj(item.links).html).href),
+        updatedAt: time(item.updated_on)
+      }
+    }
+    case 'azure': {
+      const id = Number(item.pullRequestId)
+      return {
+        number: id,
+        title: str(item.title),
+        author: str(obj(item.createdBy).displayName) || str(obj(item.createdBy).uniqueName),
+        sourceBranch: branchName(str(item.sourceRefName)),
+        targetBranch: branchName(str(item.targetRefName)),
+        sameRepo: !item.forkSource,
+        draft: item.isDraft === true,
+        url: `${web}/pullrequest/${id}`,
+        updatedAt: time(item.creationDate)
+      }
+    }
+    default: {
+      // GitHub and Gitea share a shape.
+      const head = obj(item.head)
+      const base = obj(item.base)
+      const title = str(item.title)
+      return {
+        number: Number(item.number),
+        title,
+        author: str(obj(item.user).login),
+        sourceBranch: str(head.ref),
+        targetBranch: str(base.ref),
+        sameRepo: str(obj(head.repo).full_name) !== '' && str(obj(head.repo).full_name) === str(obj(base.repo).full_name),
+        draft: typeof item.draft === 'boolean' ? item.draft : WIP_TITLE.test(title),
+        url: str(item.html_url),
+        updatedAt: time(item.updated_at)
+      }
+    }
+  }
+}
+
+function repoApiOrThrow(account: ApiAccount, url: string): RepoApi {
+  const api = repoApi(account, url)
+  if (!api) throw new Error(`Can’t tell which repository ${url} is on the service`)
+  return api
+}
+
+/** Up to 50 open pull requests (merge requests on GitLab), most recently updated first. */
+export async function listPullRequests(account: ApiAccount, token: string, remoteUrl: string): Promise<PullRequest[]> {
+  const api = repoApiOrThrow(account, remoteUrl)
+  const path = {
+    github: '/pulls?state=open&sort=updated&direction=desc&per_page=50',
+    gitea: '/pulls?state=open&sort=recentupdate&limit=50',
+    gitlab: '/merge_requests?state=opened&order_by=updated_at&per_page=50',
+    bitbucket: '/pullrequests?state=OPEN&sort=-updated_on&pagelen=50',
+    azure: '/pullrequests?searchCriteria.status=active&$top=50&api-version=7.1',
+    generic: ''
+  }[account.provider]
+  const body = await getJson(account, token, api.base + path)
+  const items = account.provider === 'bitbucket' ? list(obj(body).values) : account.provider === 'azure' ? list(obj(body).value) : list(body)
+  return items.map((item) => toPullRequest(account, item, api.web))
+}
+
+/** Open a pull request from one branch of the repository into another. */
+export async function createPullRequest(account: ApiAccount, token: string, remoteUrl: string, input: NewPullRequest): Promise<PullRequest> {
+  const api = repoApiOrThrow(account, remoteUrl)
+  const { title, description, source, target } = input
+  const [path, body]: [string, Json] = {
+    github: ['/pulls', { title, body: description, head: source, base: target }],
+    gitea: ['/pulls', { title, body: description, head: source, base: target }],
+    gitlab: ['/merge_requests', { title, description, source_branch: source, target_branch: target }],
+    bitbucket: ['/pullrequests', { title, description, source: { branch: { name: source } }, destination: { branch: { name: target } } }],
+    azure: [
+      '/pullrequests?api-version=7.1',
+      { title, description, sourceRefName: `refs/heads/${source}`, targetRefName: `refs/heads/${target}` }
+    ],
+    generic: ['', {}]
+  }[account.provider] as [string, Json]
+  return toPullRequest(account, obj(await request(account, token, api.base + path, body)), api.web)
 }

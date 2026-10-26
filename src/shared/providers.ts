@@ -18,6 +18,12 @@ export interface ProviderInfo {
   scopes: string
   /** Page where the user creates a token, or null when we can't know it. */
   tokenUrl(host: string, organization?: string): string | null
+  /**
+   * How browser sign-in (OAuth) works, where the service has it: `device` shows a code to enter on
+   * the service's site, `browser` sends the browser back to Git Steve on 127.0.0.1. It's only offered
+   * for servers Git Steve has an OAuth application for.
+   */
+  browserSignIn?: 'device' | 'browser'
 }
 
 const encode = encodeURIComponent
@@ -33,7 +39,8 @@ export const PROVIDERS: ProviderInfo[] = [
     needs: {},
     tokenLabel: 'Personal access token',
     scopes: 'repo',
-    tokenUrl: (host) => `https://${host}/settings/tokens/new?scopes=repo&description=Git%20Steve`
+    tokenUrl: (host) => `https://${host}/settings/tokens/new?scopes=repo&description=Git%20Steve`,
+    browserSignIn: 'device'
   },
   {
     id: 'gitlab',
@@ -44,9 +51,10 @@ export const PROVIDERS: ProviderInfo[] = [
     hostHint: 'Self-managed GitLab? Enter your company’s address instead.',
     needs: {},
     tokenLabel: 'Personal access token',
-    scopes: 'read_api, read_repository and write_repository',
+    scopes: 'api (to open merge requests; read_api is enough to list them), read_repository and write_repository',
     tokenUrl: (host) =>
-      `https://${host}/-/user_settings/personal_access_tokens?name=Git%20Steve&scopes=read_api,read_repository,write_repository`
+      `https://${host}/-/user_settings/personal_access_tokens?name=Git%20Steve&scopes=api,read_repository,write_repository`,
+    browserSignIn: 'browser'
   },
   {
     id: 'bitbucket',
@@ -56,7 +64,7 @@ export const PROVIDERS: ProviderInfo[] = [
     hostEditable: false,
     needs: { email: true },
     tokenLabel: 'API token',
-    scopes: 'Bitbucket scopes to read your account and read and write repositories',
+    scopes: 'Bitbucket scopes to read your account, read and write repositories, and read and write pull requests',
     tokenUrl: () => 'https://id.atlassian.com/manage-profile/security/api-tokens'
   },
   {
@@ -81,7 +89,8 @@ export const PROVIDERS: ProviderInfo[] = [
     needs: {},
     tokenLabel: 'Access token',
     scopes: 'repository (read and write) and user (read)',
-    tokenUrl: (host) => (host ? `https://${host}/user/settings/applications` : null)
+    tokenUrl: (host) => (host ? `https://${host}/user/settings/applications` : null),
+    browserSignIn: 'browser'
   },
   {
     id: 'generic',

@@ -758,6 +758,26 @@ button.chip:hover {
   opacity: 0.75;
   font-weight: 400;
 }
+/* The branch a commit belongs to: filled, so it reads apart from the outlined refs that point at it. */
+.commit-branch {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 220px;
+  padding: 0 7px 0 6px;
+  border-radius: 5px;
+  background: var(--bg-hover);
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 18px;
+}
+.commit-branch svg {
+  flex: none;
+}
+.commit-branch.gone {
+  font-style: italic;
+}
 .avatar {
   flex: none;
   display: inline-flex;
@@ -1022,9 +1042,13 @@ button.chip:hover {
 .file-dir {
   color: var(--text-faint);
 }
-.file-action {
+.file-actions {
   position: absolute;
   right: 10px;
+  display: flex;
+  gap: 4px;
+}
+.file-action {
   width: 26px;
   min-height: 26px;
   padding: 0;
@@ -1034,6 +1058,13 @@ button.chip:hover {
 .file-item:hover .file-action,
 .file-action:focus-visible {
   opacity: 1;
+}
+.changes-section > header > span {
+  display: flex;
+  gap: 4px;
+}
+button.link.danger {
+  color: var(--danger-text);
 }
 
 /* ---- Left panel: branches ---- */
@@ -1704,4 +1735,269 @@ button.chip:hover {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+/* ---- History: search and filters above the graph ---- */
+.history {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.history > .graph {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+.history > .empty-state.centered {
+  flex: 1;
+  height: auto;
+}
+.history-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+.history-toolbar select,
+.history-toolbar .path-filter,
+.search-box input {
+  min-height: 30px;
+}
+.history-toolbar select {
+  width: auto;
+  max-width: 220px;
+}
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 280px;
+  max-width: 460px;
+  min-width: 200px;
+  padding-left: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.search-box:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.search-box input {
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+  border: none;
+  background: transparent;
+}
+.search-box input:focus {
+  outline: none;
+}
+.search-count {
+  flex: none;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.icon-button.small {
+  width: 26px;
+  min-height: 26px;
+}
+.checkbox.compact {
+  flex: none;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+.path-filter {
+  width: 190px;
+}
+.active-filter {
+  border-color: var(--accent);
+  background: var(--bg-selected);
+}
+.commit-row.dimmed {
+  opacity: 0.38;
+}
+.commit-row.dimmed:hover {
+  opacity: 0.8;
+}
+
+/* ---- Diff: picking lines and hunks, and conflict sides ---- */
+.diff-selection {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.diff-selection button,
+.hunk-actions button,
+.conflict-actions button,
+.conflict-toolbar button,
+.small-button {
+  min-height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+.diff-tip {
+  margin: 0;
+  padding: 4px 14px;
+  font-size: 12px;
+  color: var(--text-faint);
+  border-bottom: 1px solid var(--border);
+}
+.diff-line .gutter {
+  flex: none;
+  display: flex;
+}
+.diff-line .gutter.pickable {
+  cursor: pointer;
+}
+.diff-line .gutter.pickable:hover {
+  background: var(--bg-hover);
+}
+.diff-line.picked .gutter {
+  background: var(--accent);
+}
+.diff-line.picked .gutter .ln,
+.diff-line.picked .gutter .sign {
+  color: var(--accent-text);
+}
+.hunk-actions {
+  position: sticky;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  padding-left: 16px;
+  font-family: var(--font);
+}
+.conflict-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.conflict-actions {
+  position: sticky;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 4px 14px;
+  font: 12px var(--font);
+  color: var(--text-dim);
+}
+.conflict-actions span {
+  margin-right: 4px;
+}
+
+/* ---- Left panel: stashes ---- */
+.stashes ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.stash-item {
+  display: flex;
+  flex-direction: column;
+  padding: 5px 14px;
+  cursor: default;
+}
+.stash-item:hover {
+  background: var(--bg-hover);
+}
+.stash-item.selected {
+  background: var(--bg-selected);
+}
+.stash-meta {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+/* ---- Left panel: pull requests ---- */
+.prs-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.prs-panel > .empty-state button {
+  margin-top: 10px;
+}
+.prs-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 10px 6px 14px;
+}
+.prs-mine {
+  margin: 0 14px 6px;
+}
+.pr-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.pr-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 14px;
+  cursor: default;
+}
+.pr-item:hover {
+  background: var(--bg-hover);
+}
+.pr-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.pr-title a {
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+}
+.pr-title a:hover {
+  text-decoration: underline;
+}
+.pr-meta {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.pr-actions {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+}
+.pr-item:hover .pr-actions,
+.pr-actions:focus-within {
+  opacity: 1;
+}
+.chip.small {
+  min-height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+}
+.user-code {
+  align-self: flex-start;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px dashed var(--accent);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
 }

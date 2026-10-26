@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react'
 import type { Commit, RefKind } from '../../../shared/types'
 import { Avatar } from '../components/Avatar'
+import { Icon } from '../components/Icon'
 import { formatRelative } from '../format'
+import { branchNameOf, type CommitBranch } from './branches'
 import type { GraphLayout } from './layout'
 import { refPills } from './refs'
 
@@ -22,9 +24,13 @@ const laneX = (column: number): number => GRAPH_PADDING + column * LANE_WIDTH
 interface Props {
   commits: Commit[]
   layout: GraphLayout
+  /** The branch each commit belongs to, shown next to it unless one of its labels already names it. */
+  branches: ReadonlyMap<string, CommitBranch>
   /** Commit HEAD points at; drawn with an outer ring. */
   headHash: string | null
   selectedHash: string | null
+  /** Commits matching the search box; the others are dimmed. Null when nothing is searched for. */
+  matches?: ReadonlySet<string> | null
   onSelect(hash: string): void
   /** Right-click (or the menu key) on a commit; `ref` is set when it was on one of its labels. */
   onContextMenu(commit: Commit, ref: { name: string; kind: RefKind } | null, position: { x: number; y: number }): void
@@ -34,7 +40,7 @@ interface Props {
  * Virtualised commit list. Only visible rows are rendered. A canvas pinned to the viewport
  * draws the lanes for those rows and is redrawn on scroll.
  */
-export function CommitGraph({ commits, layout, headHash, selectedHash, onSelect, onContextMenu }: Props) {
+export function CommitGraph({ commits, layout, branches, headHash, selectedHash, matches = null, onSelect, onContextMenu }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -53,6 +59,21 @@ export function CommitGraph({ commits, layout, headHash, selectedHash, onSelect,
     setViewportHeight(element.clientHeight)
     return () => observer.disconnect()
   }, [])
+
+  // Bring a commit selected from elsewhere (a branch, a search match) into view, once: a refresh
+  // mustn't pull the list back after the user scrolled away.
+  const scrolledTo = useRef<string | null>(null)
+  useEffect(() => {
+    if (selectedHash === null) scrolledTo.current = null
+    const element = scrollRef.current
+    const index = commits.findIndex((c) => c.hash === selectedHash)
+    if (!element || index === -1 || scrolledTo.current === selectedHash) return
+    scrolledTo.current = selectedHash
+    const top = index * ROW_HEIGHT
+    if (top < element.scrollTop || top + ROW_HEIGHT > element.scrollTop + element.clientHeight) {
+      element.scrollTop = top - element.clientHeight / 2
+    }
+  }, [selectedHash, commits])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -168,10 +189,14 @@ export function CommitGraph({ commits, layout, headHash, selectedHash, onSelect,
           {visible.map((commit, offset) => {
             const index = first + offset
             const working = commit.hash === WORKING_COPY
+            const branch = branches.get(commit.hash)
+            const showBranch = branch && !commit.refs.some((ref) => branchNameOf(ref) === branch.name)
             return (
               <div
                 key={commit.hash}
-                className={`commit-row${commit.hash === selectedHash ? ' selected' : ''}${working ? ' working' : ''}`}
+                className={`commit-row${commit.hash === selectedHash ? ' selected' : ''}${working ? ' working' : ''}${
+                  matches && !matches.has(commit.hash) ? ' dimmed' : ''
+                }`}
                 style={{ top: index * ROW_HEIGHT, height: ROW_HEIGHT, paddingLeft: graphWidth }}
                 onClick={() => onSelect(commit.hash)}
                 onContextMenu={(event) => {
@@ -195,6 +220,19 @@ export function CommitGraph({ commits, layout, headHash, selectedHash, onSelect,
                       {pill.remotes.length > 0 && <span className="ref-remotes"> · {pill.remotes.join(', ')}</span>}
                     </span>
                   ))}
+                  {showBranch && (
+                    <span
+                      className={`commit-branch${branch.gone ? ' gone' : ''}`}
+                      title={
+                        branch.gone
+                          ? `Made on ${branch.name}, a branch that has since been deleted. The name comes from the merge that brought this commit in.`
+                          : `On branch ${branch.name}`
+                      }
+                    >
+                      <Icon name="branch" size={11} />
+                      <span className="ellipsis">{branch.name}</span>
+                    </span>
+                  )}
                   <span className="commit-subject" title={commit.subject}>
                     {commit.subject}
                   </span>

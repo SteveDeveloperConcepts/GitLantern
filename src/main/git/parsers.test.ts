@@ -59,9 +59,20 @@ describe('parseDecorations', () => {
       )
     ).toEqual([
       { name: 'main', kind: 'local', isCurrent: true },
-      { name: 'origin/main', kind: 'remote' },
+      { name: 'origin/main', kind: 'remote', isDefault: true },
       { name: 'v1.0', kind: 'tag' },
       { name: 'dev', kind: 'local', isCurrent: false }
+    ])
+  })
+
+  it("marks a remote's default branch only when it's the one candidate", () => {
+    expect(parseDecorations('refs/remotes/origin/main, refs/remotes/origin/HEAD, refs/remotes/upstream/main')).toEqual([
+      { name: 'origin/main', kind: 'remote', isDefault: true },
+      { name: 'upstream/main', kind: 'remote' }
+    ])
+    expect(parseDecorations('refs/remotes/origin/main, refs/remotes/origin/HEAD, refs/remotes/origin/release')).toEqual([
+      { name: 'origin/main', kind: 'remote' },
+      { name: 'origin/release', kind: 'remote' }
     ])
   })
 

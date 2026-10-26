@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { DiffTarget, RepoStatus, StatusEntry } from '../../../shared/types'
 import { OPERATION_NAMES } from '../branchMenus'
 import { FileList, type FileListItem } from './FileList'
+import { Icon } from './Icon'
 
 interface Props {
   status: RepoStatus | null
@@ -11,6 +12,8 @@ interface Props {
   onOpenDiff(target: DiffTarget): void
   onStage(paths: string[]): void
   onUnstage(paths: string[]): void
+  /** Throw away unstaged changes to these files (asks first). */
+  onDiscard(paths: string[]): void
   onCommit(message: string): void
 }
 
@@ -27,7 +30,7 @@ const stagedItem = (entry: StatusEntry): FileListItem => ({
   status: entry.index ?? 'M'
 })
 
-export function ChangesPanel({ status, busy, openTarget, onOpenDiff, onStage, onUnstage, onCommit }: Props) {
+export function ChangesPanel({ status, busy, openTarget, onOpenDiff, onStage, onUnstage, onDiscard, onCommit }: Props) {
   const [summary, setSummary] = useState('')
   const [description, setDescription] = useState('')
 
@@ -62,9 +65,18 @@ export function ChangesPanel({ status, busy, openTarget, onOpenDiff, onStage, on
           <section className="changes-section">
             <header>
               <h3>Unstaged · {unstaged.length}</h3>
-              <button className="link" disabled={busy} onClick={() => onStage(unstaged.map((e) => e.path))}>
-                Stage all
-              </button>
+              <span>
+                <button
+                  className="link danger"
+                  disabled={busy || unstaged.every((e) => e.conflicted)}
+                  onClick={() => onDiscard(unstaged.filter((e) => !e.conflicted).map((e) => e.path))}
+                >
+                  Discard all
+                </button>
+                <button className="link" disabled={busy} onClick={() => onStage(unstaged.map((e) => e.path))}>
+                  Stage all
+                </button>
+              </span>
             </header>
             <FileList
               items={unstaged.map(unstagedItem)}
@@ -77,7 +89,15 @@ export function ChangesPanel({ status, busy, openTarget, onOpenDiff, onStage, on
                   conflicted: conflicted.has(item.path)
                 })
               }
-              action={{ label: '+', title: 'Stage', run: (item) => onStage([item.path]) }}
+              actions={[
+                {
+                  label: <Icon name="discard" size={14} />,
+                  title: 'Discard changes to',
+                  run: (item) => onDiscard([item.path]),
+                  hidden: (item) => conflicted.has(item.path)
+                },
+                { label: '+', title: 'Stage', run: (item) => onStage([item.path]) }
+              ]}
             />
           </section>
         )}
@@ -93,7 +113,7 @@ export function ChangesPanel({ status, busy, openTarget, onOpenDiff, onStage, on
               items={staged.map(stagedItem)}
               selectedKey={selectedKey}
               onOpen={(item) => onOpenDiff({ kind: 'index', path: item.path })}
-              action={{ label: '−', title: 'Unstage', run: (item) => onUnstage([item.path]) }}
+              actions={[{ label: '−', title: 'Unstage', run: (item) => onUnstage([item.path]) }]}
             />
           </section>
         )}
@@ -101,9 +121,11 @@ export function ChangesPanel({ status, busy, openTarget, onOpenDiff, onStage, on
 
       {status.operation ? (
         <div className="commit-form operation-note">
+          Click a conflicted file to pick a side for each conflict (it’s staged once none are left), or fix it in your editor and
+          stage it.{' '}
           {status.operation.kind === 'merge'
-            ? 'Stage the files once their conflicts are fixed, then click Finish merge at the top to commit the merge.'
-            : `Stage the files once their conflicts are fixed, then click Continue at the top to go on with the ${OPERATION_NAMES[status.operation.kind]}.`}
+            ? 'Then click Finish merge at the top to commit the merge.'
+            : `Then click Continue at the top to go on with the ${OPERATION_NAMES[status.operation.kind]}.`}
         </div>
       ) : (
         <form

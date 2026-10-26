@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { parseConflicts, parseDiff } from './diff'
+import { parsePatch } from '../../shared/patch'
+import { parseConflicts, parseDiff, sideName } from './diff'
 
 describe('parseDiff', () => {
   it('numbers old and new lines from the hunk header', () => {
@@ -54,5 +55,28 @@ describe('parseConflicts', () => {
     const { lines, conflicts } = parseConflicts('========\n<<<<<<<<< no\n')
     expect(conflicts).toBe(0)
     expect(lines.every((l) => l.kind === 'context')).toBe(true)
+  })
+
+  it('labels every conflict and names its sides plainly', () => {
+    const { lines, labels } = parseConflicts(['<<<<<<< HEAD', 'a', '=======', 'b', '>>>>>>> 1a2b3c4d (Fix it)', ''].join('\n'))
+    expect(lines[0]?.conflict).toBe(0)
+    expect(labels).toEqual([{ ours: 'HEAD', theirs: '1a2b3c4d (Fix it)' }])
+    expect(sideName('HEAD', 'main')).toBe('main')
+    expect(sideName('1a2b3c4d (Fix it)', 'main')).toBe('commit 1a2b3c4')
+    expect(sideName('Stashed changes', 'main')).toBe('the stash')
+    expect(sideName('feature', 'main')).toBe('feature')
+  })
+})
+
+describe('line keys', () => {
+  it('number changed lines the way parsePatch does', () => {
+    const text = ['--- a/x', '+++ b/x', '@@ -1,2 +1,2 @@', ' a', '-b', '\\ No newline at end of file', '+c', '@@ -9 +9 @@', '-y', '+z', ''].join('\n')
+    const patch = parsePatch(text)
+    const keyed = parseDiff(text).filter((line) => line.key)
+    expect(keyed.map((line) => line.key)).toEqual(['0:1', '0:2', '1:0', '1:1'])
+    for (const line of keyed) {
+      const [hunk = -1, index = -1] = (line.key ?? '').split(':').map(Number)
+      expect(patch?.hunks[hunk]?.lines[index]?.text).toBe(line.text)
+    }
   })
 })

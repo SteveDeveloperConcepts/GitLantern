@@ -21,22 +21,40 @@ managers keep working.
 - **Commit graph:** every branch, merge and tag as a coloured lane graph, with author avatars. It
   shows the latest 2,000 commits across all branches and scrolls smoothly through them. Uncommitted
   work appears as a dashed row on top.
+- **Branch on every commit:** each commit is labelled with the branch it belongs to, even after that
+  branch was merged and deleted (then the name comes from the merge commit and is shown in italics).
+- **Search and filter:** search the history by message, author, hash or branch name, step through the
+  matches with **Enter**, or show only the matches. Narrow the graph to one branch, or to the commits
+  that changed a file or folder.
 - **Commit details and diffs:** click a commit to see its message, author, parents and changed files
   with line counts. The diff alongside has line numbers.
 - **Stage and commit:** stage or unstage single files or everything at once, see each file's diff, and
   write a summary plus an optional description.
+- **Lines and hunks:** stage, unstage or discard a single hunk with the buttons on it, or pick lines by
+  clicking their line numbers (Shift-click for a range).
+- **Discard changes:** throw away a file's unstaged changes, or all of them. New files go to the trash,
+  so a slip can be undone.
+- **Stash:** put your uncommitted changes aside (new files included) with an optional note, and pop
+  them back later. Stashes are listed on the Branches tab, where you can look inside one, apply it,
+  pop it or delete it.
 - **Branches:** switch from the branch menu in the top bar or double-click one on the Branches tab
   (remote branches get a local tracking branch), and create new branches.
 - **Merge and rebase:** right-click a branch or commit in the graph, or a branch on the Branches tab,
   to merge it into your branch or rebase your branch onto it. A dialog first explains what will happen
   (fast-forward, merge commit, how many commits get replayed, and whether any were already pushed).
-- **Conflicts:** when a merge or rebase stops on conflicts, a banner shows how far it got. Each
-  conflicted file opens with its two sides highlighted. Fix them in your editor, stage them, then
-  finish, skip the commit (rebase) or abort.
+- **Cherry-pick:** right-click any commit to copy it onto your branch.
+- **Conflicts:** when a merge, rebase, cherry-pick or stash stops on conflicts, a banner shows how far
+  it got. Each conflicted file opens with its two sides highlighted, named after the branches they
+  come from. Pick one side, the other or both for each conflict, or one side for the whole file. Once
+  none are left the file is staged, and you finish, skip the commit (rebase) or abort. Fixing a file in
+  your editor works too.
 - **Fetch, pull and push:** fetch all remotes, pull and push. The buttons show how many commits are
   waiting. Pull never makes a merge commit behind your back. When your branch and the remote have both
   moved on, it asks whether to merge or rebase. A refused push is explained in plain words. A new
   branch's upstream is set on its first push.
+- **Force push after a rebase:** when the remote only has old copies of commits you've since rebased
+  or amended, Push offers a force push. It's a lease: it goes ahead only while the remote branch is
+  still where Git Steve last saw it, so someone else's new commits are never thrown away.
 - **Live updates:** the view refreshes when files change on disk or when you use Git from a terminal.
 
 ### Any Git service
@@ -45,6 +63,13 @@ managers keep working.
   Azure DevOps, Gitea / Forgejo / Codeberg, or any other HTTPS Git server. Paste an access token
   (Git Steve links straight to the right page to create one), and it's checked with the service and
   stored encrypted by your operating system's keychain.
+- **Sign in with the browser:** GitHub, GitLab and Gitea / Forgejo servers with an OAuth application
+  set up for Git Steve (see [Where your data lives](#where-your-data-lives)) can be connected by
+  approving Git Steve in the browser instead of making a token. GitHub shows a short code to enter on
+  github.com. Tokens that expire are renewed automatically.
+- **Pull requests:** the PRs tab (MRs on GitLab) lists the open pull requests of the repository's
+  service. Open one in the browser, check it out (pull requests from forks too, on GitHub, GitLab and
+  Gitea), or open a new one from your branch.
 - **No more password prompts:** once a server is connected, Git Steve answers Git's sign-in requests
   for it automatically, for clone, fetch, pull and push.
 - **Clone from anywhere:** paste any HTTPS or SSH address, or browse and filter the repositories in your
@@ -142,17 +167,24 @@ Builds for the Microsoft Store and the Mac App Store are covered in [docs/RELEAS
 3. **Explore history:** scroll the graph, and click a commit to see its details and diff in the pane
    below. Use **↑ / ↓** to move between commits. Drag the divider to resize the pane.
 4. **Commit:** on the **Changes** tab, click a file to see its diff, then press **+** to stage it (or
-   **Stage all**). Write a summary and click **Commit**, or press **Ctrl+Enter** (**⌘+Enter** on Mac).
+   **Stage all**). To stage only part of a file, use **Stage hunk** in its diff, or click line numbers
+   to pick lines and then **Stage**. The curved arrow next to a file discards its changes. Write a
+   summary and click **Commit**, or press **Ctrl+Enter** (**⌘+Enter** on Mac).
+   **Stash** in the top bar puts everything aside for later; **Pop** brings the latest stash back.
 5. **Branches:** use the branch menu in the top bar, or the **Branches** tab: click a branch to jump to
    it in the graph, double-click to check it out. **Branch** creates one from where you are.
    **Right-click** a branch label or commit in the graph (or a branch on the Branches tab) to merge,
-   rebase, check out, create a branch there or copy the commit hash.
+   rebase, cherry-pick, check out, create a branch there or copy the commit hash.
+   **Ctrl+F** (**⌘+F**) jumps to the search box above the graph.
 6. **Remotes:** the **Remotes** tab lists where this repository pushes and pulls. **Add remote**
    connects a new or empty repository to a service. **Test connection** checks the address first.
 7. **Sync:** use **Fetch**, **Pull** and **Push** in the top bar. The status bar at the bottom shows
    your branch, how many commits you're ahead or behind, and which account the remote uses. If Pull and
    Push both show a number, the remote has commits you don't and you have commits it doesn't. Click
    **Pull** and choose **Merge** or **Rebase** before you push.
+8. **Pull requests:** the **PRs** tab lists the open pull requests on the repository's service once
+   its account is connected. Double-click one to check it out. **New** opens one from your branch:
+   push the branch first, then pick the branch to merge into.
 
 ## Where your data lives
 
@@ -165,12 +197,24 @@ own settings live here:
 | Windows, installed from the Microsoft Store | `%LOCALAPPDATA%\Packages\<package name>\LocalCache\Roaming\Git Steve` |
 | macOS | `~/Library/Application Support/Git Steve` |
 
-- `settings.json`: your recent repositories, the last clone folder, and an optional `gitPath` that
-  points at a specific `git` executable.
+- `settings.json`: your recent repositories, the last clone folder, an optional `gitPath` that points
+  at a specific `git` executable, and optional `oauthClients` (see below).
 - `accounts.json`: which services you've connected (server, username). It never contains tokens.
-- `secrets.json`: account tokens and answers you chose to remember, encrypted with Windows DPAPI or
-  the macOS Keychain. They can't be read on another computer or by another user. Remove an account
-  under **Accounts**. To clear remembered answers, open the **Branches** tab and click **Forget all**.
+- `secrets.json`: account tokens (and the refresh tokens of browser sign-ins) and answers you chose to
+  remember, encrypted with Windows DPAPI or the macOS Keychain. They can't be read on another computer
+  or by another user. Remove an account under **Accounts**. To clear remembered answers, open the
+  **Branches** tab and click **Forget all**.
+
+**Setting up browser sign-in.** Browser sign-in needs an OAuth application on the server, and its
+client ID (which isn't secret) in `settings.json`, for example
+`"oauthClients": { "gitlab.example.com": "<client ID>" }`. Restart Git Steve after adding one.
+
+- **GitHub** (or GitHub Enterprise): **Settings → Developer settings → OAuth Apps → New OAuth App**.
+  Any homepage and callback URL will do; tick **Enable Device Flow**.
+- **GitLab:** **User settings → Applications**. Untick **Confidential**, set the redirect URI to
+  `http://127.0.0.1/callback` and tick the scopes `api`, `read_repository` and `write_repository`.
+- **Gitea / Forgejo:** **Settings → Applications → Create a new OAuth2 application**. Untick
+  **Confidential client** and set the redirect URI to `http://127.0.0.1/callback`.
 
 Git Steve never changes your SSH keys. The only exception is **Create an SSH key**, which writes
 `~/.ssh/id_ed25519` when you have no key yet.
@@ -210,21 +254,26 @@ Because both sides have new commits, Git Steve asks how to combine them. **Merge
 **Rebase** moves your commits after theirs. If the same lines changed on both sides, fix the conflicts
 it shows, then push again. **Don't force-push here:** it would delete their commits from the server.
 
-**"Push refused: origin/main still has the old copies of commits you've since rewritten"**<br>
-You rebased, or amended, commits that were already pushed, so the server's copies have to be replaced.
-Git Steve can't force-push yet. If nobody else works on that branch, run `git push --force-with-lease`
-in a terminal in the repository. It refuses if someone pushed in the meantime. Git Steve only shows
-this message when every commit on the server was once on your branch.
+**"Replace origin/main?" when you push**<br>
+You rebased, or amended, commits that were already pushed, so the server's copies have to be replaced
+with a force push. Git Steve only offers it when every commit on the server was once on your branch,
+and the push is refused if anyone pushed in the meantime. If other people use that branch, tell them
+first: they'll need to reset their copies.
+
+**"Force push refused: someone pushed to origin/main since you looked"**<br>
+Someone pushed between Git Steve's check and your click. Click **Pull** to bring their commits in,
+then push again.
+
+**No "Sign in with … in your browser" button**<br>
+Browser sign-in needs an OAuth application for that server. Paste a token instead, or set one up as
+described under [Where your data lives](#where-your-data-lives).
+
+**"Git couldn't apply those lines"**<br>
+The file changed after its diff was shown, or the lines picked can't be separated (for example a
+change to the last line of a file without a final newline). Pick the whole hunk instead.
 
 ## Roadmap
 
-- Stash and cherry-pick
-- Force push (with lease) after a rebase
-- Picking a side for each conflict inside Git Steve
-- Discarding changes, and staging individual lines or hunks
-- Search and filtering in the history
-- Pull requests / merge requests from connected accounts
-- Browser sign-in (OAuth) as an alternative to pasting a token
 - A settings screen
 - Signed installers and a bundled Git for Windows
 

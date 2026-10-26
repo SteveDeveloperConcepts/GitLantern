@@ -56,19 +56,48 @@ describe('pull and push', () => {
     expect(await head(ours)).toBe(before)
 
     expect(await commands.merge(ours, 'origin/main')).toEqual({ conflicted: false })
-    await commands.push(ours)
+    expect(await commands.push(ours)).toEqual({ outcome: 'pushed' })
     expect(await head(ours, 'origin/main')).toBe(await head(ours))
   })
 
-  it('recognises pushed commits that were rewritten since', async () => {
-    const { ours } = await setup()
-    write(ours, 'c.txt', 'ours\n')
-    await commitAt(ours, 'our work', 1_700_000_100)
-    await git(ours, 'push', '-q')
-    await git(ours, 'commit', '-q', '--amend', '-m', 'our work, reworded')
+  /** Ours pushes a commit, then rewords it: the server keeps the old copy. */
+  async function rewritten(): Promise<{ ours: string; theirs: string }> {
+    const repos = await setup()
+    write(repos.ours, 'c.txt', 'ours\n')
+    await commitAt(repos.ours, 'our work', 1_700_000_100)
+    await git(repos.ours, 'push', '-q')
+    await git(repos.ours, 'commit', '-q', '--amend', '-m', 'our work, reworded')
+    return repos
+  }
 
-    await expect(commands.push(ours)).rejects.toThrow(/^Push refused: origin\/main still has the old copies .*--force-with-lease/)
-    await expect(commands.pull(ours)).rejects.toThrow(/^Nothing to pull: origin\/main still has the old copies/)
+  it('offers a force push for pushed commits that were rewritten since', async () => {
+    const { ours } = await rewritten()
+    const old = await head(ours, 'origin/main')
+
+    expect(await commands.push(ours)).toEqual({ outcome: 'needs-force', upstream: 'origin/main', expected: old, replaced: 1 })
+    await expect(commands.pull(ours)).rejects.toThrow(/^Nothing to pull: origin\/main still has the old copies .*Click Push/)
+
+    await commands.forcePush(ours, old)
+    expect(await head(ours, 'origin/main')).toBe(await head(ours))
+    const server = (await git(ours, 'ls-remote', 'origin', 'refs/heads/main')).split('\t')[0]
+    expect(server).toBe(await head(ours))
+  })
+
+  it('refuses the force push when someone pushed in the meantime', async () => {
+    const { ours, theirs } = await rewritten()
+    const { outcome, expected } = (await commands.push(ours)) as { outcome: string; expected: string }
+    expect(outcome).toBe('needs-force')
+
+    await git(theirs, 'pull', '-q', '--no-rebase')
+    write(theirs, 'd.txt', 'theirs\n')
+    await commitAt(theirs, 'their work', 1_700_000_300)
+    await git(theirs, 'push', '-q')
+    // Even after fetching their commit, the lease is the commit the user was shown.
+    await commands.fetch(ours)
+
+    await expect(commands.forcePush(ours, expected)).rejects.toThrow(/^Force push refused: someone pushed to origin\/main/)
+    const server = (await git(ours, 'ls-remote', 'origin', 'refs/heads/main')).split('\t')[0]
+    expect(server).toBe(await head(theirs))
   })
 
   it('needs a branch with an upstream to pull', async () => {
