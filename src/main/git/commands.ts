@@ -603,7 +603,7 @@ async function unseenUpstreamCommits(repo: string, branchName: string): Promise<
 function rewrittenMessage(upstream: string): string {
   return (
     `${upstream} still has the old copies of commits you've since rewritten, for example by rebasing. ` +
-    'Click Push to replace them: Git Steve offers a force push.'
+    'Click Push to replace them: GitLantern offers a force push.'
   )
 }
 
@@ -646,7 +646,7 @@ async function rejectedPush(repo: string, auth: string[], branchName: string, up
   const them = unseen === 1 ? 'it' : 'them'
   throw new Error(
     `Push refused: ${upstream} has ${commitCount(unseen)} that ${branchName} doesn’t, and pushing would throw ${them} ` +
-      `away. Click Pull to bring ${them} in (Git Steve asks whether to merge or rebase), then push again.`
+      `away. Click Pull to bring ${them} in (GitLantern asks whether to merge or rebase), then push again.`
   )
 }
 

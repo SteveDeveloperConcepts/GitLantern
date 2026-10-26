@@ -15,7 +15,7 @@ interface Props {
   onCancel(): void
 }
 
-/** One line describing what an address is and how Git Steve will authenticate. */
+/** One line describing what an address is and how GitLantern will authenticate. */
 export function describeAddress(url: string): string | null {
   const parsed = parseRemoteUrl(url)
   if (!url.trim()) return null

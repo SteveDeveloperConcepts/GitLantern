@@ -8,7 +8,7 @@ const SCRIPT = path.resolve(import.meta.dirname, '../scripts/release.mjs')
 
 /** A bare "server" and a clone of it whose package.json says 0.1.0, with `main` pushed and tracked. */
 function setup() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitsteve-release-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitlantern-release-'))
   const globalConfig = path.join(dir, 'gitconfig')
   fs.writeFileSync(globalConfig, '')
   const env = {
@@ -29,7 +29,7 @@ function setup() {
   const repo = path.join(dir, 'repo')
   git(dir, 'init', '-q', '--bare', '-b', 'main', server)
   git(dir, 'clone', '-q', server, repo)
-  fs.writeFileSync(path.join(repo, 'package.json'), '{\n  "name": "gitsteve",\n  "productName": "Git Steve",\n  "version": "0.1.0"\n}\n')
+  fs.writeFileSync(path.join(repo, 'package.json'), '{\n  "name": "gitlantern",\n  "productName": "GitLantern",\n  "version": "0.1.0"\n}\n')
   git(repo, 'add', '-A')
   git(repo, 'commit', '-q', '-m', 'base')
   git(repo, 'push', '-q', '-u', 'origin', 'main')
@@ -53,7 +53,7 @@ describe('yarn release', () => {
     expect(git(repo, 'log', '-1', '--format=%s')).toBe('Release 0.2.0')
     expect(git(repo, 'cat-file', '-t', 'v0.2.0')).toBe('tag')
     expect(git(repo, 'tag', '-l', '--format=%(contents)', 'v0.2.0')).toBe(
-      'Git Steve 0.2.0\n\n- Pull handles diverged branches\n- Refused pushes explained'
+      'GitLantern 0.2.0\n\n- Pull handles diverged branches\n- Refused pushes explained'
     )
     expect(git(server, 'rev-parse', 'main')).toBe(git(repo, 'rev-parse', 'HEAD'))
     expect(git(server, 'rev-parse', 'v0.2.0^{commit}')).toBe(git(repo, 'rev-parse', 'HEAD'))
@@ -66,7 +66,7 @@ describe('yarn release', () => {
     const result = release('0.2.0', 'Something new', '--dry-run')
     expect(result.code).toBe(0)
     expect(result.out).toContain('raise the version in package.json from 0.1.0 to 0.2.0')
-    expect(result.out).toContain('Git Steve 0.2.0\n\n- Something new')
+    expect(result.out).toContain('GitLantern 0.2.0\n\n- Something new')
     expect(result.out).toContain('Dry run: nothing was changed.')
     expect(version()).toBe('0.1.0')
     expect(git(repo, 'rev-parse', 'HEAD')).toBe(before)

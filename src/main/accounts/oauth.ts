@@ -5,7 +5,7 @@ import { providerInfo, type ProviderId } from '../../shared/providers'
 import type { SignInProgress } from '../../shared/types'
 
 /**
- * OAuth applications registered for Git Steve, by server: host → client ID. Browser sign-in is only
+ * OAuth applications registered for GitLantern, by server: host → client ID. Browser sign-in is only
  * offered where there is one, here or under `oauthClients` in settings.json (for a company's own
  * GitLab or Gitea, which needs its own application). Client IDs aren't secret: neither flow uses a
  * client secret. docs/DEVELOPMENT.md explains how to register the applications.
@@ -61,7 +61,7 @@ async function postForm(url: string, params: Record<string, string>, signal?: Ab
   try {
     response = await fetch(url, {
       method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'GitSteve' },
+      headers: { Accept: 'application/json', 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'GitLantern' },
       body: new URLSearchParams(params).toString(),
       signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]) : AbortSignal.timeout(REQUEST_TIMEOUT_MS)
     })
@@ -142,7 +142,7 @@ async function deviceFlow({ host, clientId, openUrl, onProgress, signal }: SignI
 }
 
 const page = (message: string): string =>
-  `<!doctype html><meta charset="utf-8"><title>Git Steve</title><body style="font:16px system-ui;margin:15vh auto;max-width:28em;text-align:center"><p>${message}</p></body>`
+  `<!doctype html><meta charset="utf-8"><title>GitLantern</title><body style="font:16px system-ui;margin:15vh auto;max-width:28em;text-align:center"><p>${message}</p></body>`
 
 /**
  * A one-off server on 127.0.0.1 for the browser to come back to with the authorization code. A
@@ -163,10 +163,10 @@ async function loopback(state: string, signal: AbortSignal): Promise<{ redirectU
     const received = url.searchParams.get('code')
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
     if (received && !error) {
-      response.end(page('You’re signed in. You can close this tab and go back to Git Steve.'))
+      response.end(page('You’re signed in. You can close this tab and go back to GitLantern.'))
       settle?.resolve(received)
     } else {
-      response.end(page('Sign-in didn’t finish. Go back to Git Steve to try again.'))
+      response.end(page('Sign-in didn’t finish. Go back to GitLantern to try again.'))
       settle?.reject(new Error(error === 'access_denied' ? 'Sign-in was turned down in the browser' : `Sign-in failed: ${error ?? 'no code'}`))
     }
   })

@@ -33,7 +33,7 @@ describe('remotes, clone and connection tests', () => {
     write(source, 'readme.md', '# hello\n')
     await commitAt(source, 'first', 1_700_000_000)
 
-    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'gitsteve-clones-'))
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'gitlantern-clones-'))
     const phases: string[] = []
     const target = await commands.clone(source, parent, (p) => phases.push(p.phase))
     expect(target).toBe(path.join(parent, path.basename(source)))
@@ -52,7 +52,7 @@ describe('remotes, clone and connection tests', () => {
     await git(source, 'branch', 'feature')
 
     expect(await commands.testRemote(source, os.tmpdir())).toEqual({ ok: true, message: 'Reachable · 2 branches' })
-    const missing = await commands.testRemote(path.join(os.tmpdir(), 'does-not-exist-gitsteve'), os.tmpdir())
+    const missing = await commands.testRemote(path.join(os.tmpdir(), 'does-not-exist-gitlantern'), os.tmpdir())
     expect(missing.ok).toBe(false)
   })
 
@@ -64,7 +64,7 @@ describe('remotes, clone and connection tests', () => {
     expect(commands.parseCloneProgress('Cloning into \'x\'...\n')).toBeNull()
   })
 
-  it('routes HTTPS credentials for connected hosts to Git Steve', () => {
+  it('routes HTTPS credentials for connected hosts to GitLantern', () => {
     commands.setAccountHosts(() => new Set(['github.com', 'git.example.com:8443']))
     expect(
       commands.credentialArgs([

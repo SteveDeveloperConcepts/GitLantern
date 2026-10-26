@@ -81,7 +81,7 @@ export function PullRequestsPanel({ repoPath, status, branches, commits, busy, r
       {list.unavailable === 'unsupported' && (
         <div className="empty-state">
           <p className="empty-title">Not available for this server</p>
-          <p>Git Steve doesn’t know how to read {nouns} from {list.service}.</p>
+          <p>GitLantern doesn’t know how to read {nouns} from {list.service}.</p>
         </div>
       )}
       {!list.unavailable && (

@@ -1,8 +1,8 @@
-import type { GitSteveApi } from '../../shared/types'
+import type { GitLanternApi } from '../../shared/types'
 
 declare global {
   interface Window {
-    api: GitSteveApi
+    api: GitLanternApi
   }
 }
 

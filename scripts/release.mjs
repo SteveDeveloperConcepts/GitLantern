@@ -97,7 +97,7 @@ if (bump) {
   fs.writeFileSync(packagePath, packageText.replace(/("version"\s*:\s*")[^"]*(")/, `$1${version}$2`))
   gitOrFail('commit', '--quiet', '-m', `Release ${version}`, '--', 'package.json')
 }
-const messageFile = path.join(os.tmpdir(), `gitsteve-release-${process.pid}.txt`)
+const messageFile = path.join(os.tmpdir(), `gitlantern-release-${process.pid}.txt`)
 fs.writeFileSync(messageFile, message)
 try {
   gitOrFail('tag', '--annotate', '--file', messageFile, tag)

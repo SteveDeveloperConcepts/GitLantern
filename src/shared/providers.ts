@@ -1,4 +1,4 @@
-/** Git hosting services Git Steve can connect to, and how to get a token for each. */
+/** Git hosting services GitLantern can connect to, and how to get a token for each. */
 
 export type ProviderId = 'github' | 'gitlab' | 'bitbucket' | 'azure' | 'gitea' | 'generic'
 
@@ -20,8 +20,8 @@ export interface ProviderInfo {
   tokenUrl(host: string, organization?: string): string | null
   /**
    * How browser sign-in (OAuth) works, where the service has it: `device` shows a code to enter on
-   * the service's site, `browser` sends the browser back to Git Steve on 127.0.0.1. It's only offered
-   * for servers Git Steve has an OAuth application for.
+   * the service's site, `browser` sends the browser back to GitLantern on 127.0.0.1. It's only offered
+   * for servers GitLantern has an OAuth application for.
    */
   browserSignIn?: 'device' | 'browser'
 }

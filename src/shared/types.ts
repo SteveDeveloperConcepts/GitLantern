@@ -320,7 +320,7 @@ export interface RepoChangedEvent {
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: string }
 
 /** The API the preload script exposes to the renderer as `window.api`. */
-export interface GitSteveApi {
+export interface GitLanternApi {
   repo: {
     pick(): Promise<RepoInfo | null>
     open(path: string): Promise<RepoInfo>
@@ -347,9 +347,9 @@ export interface GitSteveApi {
     connect(input: AccountInput): Promise<Account>
     remove(id: string): Promise<void>
     repos(id: string): Promise<HostedRepo[]>
-    /** Servers Git Steve can sign in to through the browser, instead of with a token. */
+    /** Servers GitLantern can sign in to through the browser, instead of with a token. */
     browserSignInHosts(): Promise<string[]>
-    /** Sign in through the browser; resolves once the user has approved Git Steve there. */
+    /** Sign in through the browser; resolves once the user has approved GitLantern there. */
     signIn(provider: ProviderId, host: string): Promise<Account>
     cancelSignIn(): Promise<void>
     onSignInProgress(callback: (progress: SignInProgress) => void): () => void

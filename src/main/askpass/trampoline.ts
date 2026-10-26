@@ -6,11 +6,11 @@ export const TRAMPOLINE_CMD = [
   '@echo off',
   'setlocal',
   'set ELECTRON_RUN_AS_NODE=1',
-  '"%GITSTEVE_ASKPASS_NODE%" "%GITSTEVE_ASKPASS_SCRIPT%" %*',
+  '"%GITLANTERN_ASKPASS_NODE%" "%GITLANTERN_ASKPASS_SCRIPT%" %*',
   ''
 ].join('\r\n')
 
-const TRAMPOLINE_SH = '#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec "$GITSTEVE_ASKPASS_NODE" "$GITSTEVE_ASKPASS_SCRIPT" "$@"\n'
+const TRAMPOLINE_SH = '#!/bin/sh\nELECTRON_RUN_AS_NODE=1 exec "$GITLANTERN_ASKPASS_NODE" "$GITLANTERN_ASKPASS_SCRIPT" "$@"\n'
 
 /**
  * Write the small script git and ssh run as GIT_ASKPASS / SSH_ASKPASS. It starts the app's own
@@ -57,9 +57,9 @@ export function askPassEnv(options: AskPassEnvOptions): Record<string, string> {
     SSH_ASKPASS_REQUIRE: 'force',
     // Older OpenSSH only uses SSH_ASKPASS when DISPLAY is set.
     DISPLAY: process.env.DISPLAY ?? ':0',
-    GITSTEVE_ASKPASS_NODE: options.nodePath,
-    GITSTEVE_ASKPASS_SCRIPT: options.scriptPath,
-    GITSTEVE_ASKPASS_ADDRESS: options.address,
-    GITSTEVE_ASKPASS_TOKEN: options.token
+    GITLANTERN_ASKPASS_NODE: options.nodePath,
+    GITLANTERN_ASKPASS_SCRIPT: options.scriptPath,
+    GITLANTERN_ASKPASS_ADDRESS: options.address,
+    GITLANTERN_ASKPASS_TOKEN: options.token
   }
 }

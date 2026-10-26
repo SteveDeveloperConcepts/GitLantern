@@ -76,7 +76,7 @@ async function request(account: ApiAccount, token: string, path: string, body?: 
     response = await fetch(url, {
       method: body ? 'POST' : 'GET',
       headers: {
-        'User-Agent': 'GitSteve',
+        'User-Agent': 'GitLantern',
         ...authHeaders(account, token),
         ...(body ? { 'Content-Type': 'application/json' } : {})
       },

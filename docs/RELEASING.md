@@ -1,16 +1,16 @@
-# Releasing Git Steve
+# Releasing GitLantern
 
 Every build is a [Yarn](https://classic.yarnpkg.com) command. Install Yarn 1 once (`npm install -g yarn`,
 or `corepack enable`), then run `yarn install` in the project folder.
 
 | Command | Builds | Run it on | Output in `dist/` |
 |---|---|---|---|
-| `yarn dist:win` | Windows installer to share directly (NSIS) | Windows | `GitSteve-Setup-<version>.exe` |
-| `yarn dist:mac` | macOS disk image to share directly | Mac | `GitSteve-<version>-<arch>.dmg` |
-| `yarn dist:msstore` | **Microsoft Store** packages, x64 and ARM64 | Windows 10 / 11 | `Git Steve-<version>-x64.appx`, `…-arm64.appx` |
-| `yarn dist:msstore-test` | The Store package, installable on your own PC for testing | Windows 11 | `Git Steve-<version>-x64-test.appx` |
-| `yarn dist:mas` | **Mac App Store** package (Apple silicon + Intel) | Mac | `mas-universal/Git Steve-<version>-mas.pkg` |
-| `yarn dist:mas-dev` | Sandboxed build that runs on your own Mac, for testing | Mac | `mas-dev…/Git Steve.app` |
+| `yarn dist:win` | Windows installer to share directly (NSIS) | Windows | `GitLantern-Setup-<version>.exe` |
+| `yarn dist:mac` | macOS disk image to share directly | Mac | `GitLantern-<version>-<arch>.dmg` |
+| `yarn dist:msstore` | **Microsoft Store** packages, x64 and ARM64 | Windows 10 / 11 | `GitLantern-<version>-x64.appx`, `…-arm64.appx` |
+| `yarn dist:msstore-test` | The Store package, installable on your own PC for testing | Windows 11 | `GitLantern-<version>-x64-test.appx` |
+| `yarn dist:mas` | **Mac App Store** package (Apple silicon + Intel) | Mac | `mas-universal/GitLantern-<version>-mas.pkg` |
+| `yarn dist:mas-dev` | Sandboxed build that runs on your own Mac, for testing | Mac | `mas-dev…/GitLantern.app` |
 
 The store commands check your setup first and stop with a message saying what's missing.
 
@@ -43,7 +43,7 @@ need a Mac to ship the Mac version.
 
    Replace each `<…>`, angle brackets included, with your own text:
    - the version: three numbers, higher than the one in `package.json`
-   - each change: one short sentence written for the people who use Git Steve
+   - each change: one short sentence written for the people who use GitLantern
 
    Add `--dry-run` to see the plan and the release notes without changing anything.
 
@@ -57,8 +57,8 @@ need a Mac to ship the Mac version.
 
 3. Follow the **Release** workflow on the repository's **Actions** tab. `yarn release` prints the link. The
    workflow type-checks and tests on Windows and macOS, then builds:
-   - `GitSteve-Setup-<version>.exe` for Windows
-   - `GitSteve-<version>-arm64.dmg` and `GitSteve-<version>-x64.dmg` for Apple silicon and Intel Macs
+   - `GitLantern-Setup-<version>.exe` for Windows
+   - `GitLantern-<version>-arm64.dmg` and `GitLantern-<version>-x64.dmg` for Apple silicon and Intel Macs
 
    It then publishes the release. The release notes contain:
    - **What's new**, from your lines
@@ -91,7 +91,7 @@ and replace the files on the release.
 
 ## Microsoft Store
 
-You don't need a code-signing certificate: Microsoft signs Store packages for you. Users get Git Steve
+You don't need a code-signing certificate: Microsoft signs Store packages for you. Users get GitLantern
 with no SmartScreen warning, and updates come through the Store.
 
 ### One-time setup
@@ -99,7 +99,7 @@ with no SmartScreen warning, and updates come through the Store.
 1. **Create a developer account** in [Partner Center](https://partner.microsoft.com/dashboard)
    (Apps and games). Check the sign-up page for the current fee.
 2. **Reserve the name.** Go to **Apps and games → New product → MSIX or PWA app**, and reserve
-   *Git Steve*. If the name is taken, reserve another one and change `appx.displayName` in
+   *GitLantern*. If the name is taken, reserve another one and change `appx.displayName` in
    `electron-builder.yml` to match.
 3. **Copy your package identity.** Open the app, then **Product management → Product identity**. Copy three
    values into the `appx` section of `electron-builder.yml`, replacing the `REPLACE-ME` placeholders:
@@ -125,12 +125,12 @@ yarn dist:msstore-test
 ```
 
 ```powershell
-Add-AppxPackage -Path "dist\Git Steve-0.1.0-x64-test.appx" -AllowUnsigned
+Add-AppxPackage -Path "dist\GitLantern-0.1.0-x64-test.appx" -AllowUnsigned
 ```
 
 That package is unsigned, so Windows only installs it with `-AllowUnsigned` and it can't be uploaded.
 It installs for all users. Remove it afterwards with
-`Get-AppxPackage *GitSteve* -AllUsers | Remove-AppxPackage -AllUsers`.
+`Get-AppxPackage *GitLantern* -AllUsers | Remove-AppxPackage -AllUsers`.
 
 ### Submit
 
@@ -140,7 +140,7 @@ It installs for all users. Remove it afterwards with
    installed.
 4. **Store listings:** description, and at least one screenshot. The images in `docs/screenshots/`
    work. Mention in the description that Git must be installed.
-5. **Privacy policy URL:** required, because Git Steve stores access tokens. Explain what's stored and
+5. **Privacy policy URL:** required, because GitLantern stores access tokens. Explain what's stored and
    that it stays on the user's computer (see "Where your data lives" in the README).
 6. **Restricted capability:** Partner Center asks why the app uses `runFullTrust`. Every desktop app
    packaged this way declares it. A suitable answer: "Desktop Git client: runs Git and SSH on the user's
@@ -152,7 +152,7 @@ Certification usually takes a few days. Partner Center emails you with the resul
 ### How the Store version differs
 
 - **Settings location:** Windows stores files the app creates in AppData in a private per-app folder,
-  `%LOCALAPPDATA%\Packages\<package family name>\LocalCache\Roaming\Git Steve`. Uninstalling the app
+  `%LOCALAPPDATA%\Packages\<package family name>\LocalCache\Roaming\GitLantern`. Uninstalling the app
   deletes it.
 - **Sign-in helper:** other programs can't always see that private folder, so the sign-in helper that Git
   runs ships inside the app instead of being written to AppData (`resources/askpass.cmd`). Every packaged
@@ -164,7 +164,7 @@ Certification usually takes a few days. Partner Center emails you with the resul
 ## Mac App Store
 
 > **Not ready for submission yet.** `yarn dist:mas` builds and signs a correct Mac App Store package,
-> but Apple requires every App Store app to run inside the **App Sandbox**, and Git Steve can't do its
+> but Apple requires every App Store app to run inside the **App Sandbox**, and GitLantern can't do its
 > main job there yet:
 >
 > - **Git won't start.** Apple's `/usr/bin/git` refuses to run inside a sandboxed app. Git installed by
@@ -203,7 +203,7 @@ Certification usually takes a few days. Partner Center emails you with the resul
 1. **Certificates:** in Xcode, go to **Settings → Accounts → Manage Certificates**. Add **Apple Distribution**
    and **Mac Installer Distribution**. Add **Apple Development** too, for `dist:mas-dev`.
 2. **App ID:** on developer.apple.com, go to **Certificates, IDs & Profiles → Identifiers**. Register the
-   explicit bundle ID `com.developerconcepts.gitsteve` (`appId` in `electron-builder.yml`).
+   explicit bundle ID `com.developerconcepts.gitlantern` (`appId` in `electron-builder.yml`).
 3. **Profiles:** on the same site, under **Profiles**, create the following and save them with these exact names:
    - **Mac App Store Connect** (distribution) → `build/embedded.provisionprofile`
    - **macOS App Development**, including your Mac → `build/development.provisionprofile`
@@ -212,7 +212,7 @@ Certification usually takes a few days. Partner Center emails you with the resul
 4. **App record:** in [App Store Connect](https://appstoreconnect.apple.com), go to **Apps → + → New App**
    (macOS). Pick the bundle ID above.
 5. Build with `yarn dist:mas-dev` and test the sandboxed app on your Mac. Then run `yarn dist:mas`.
-6. Upload `dist/mas-universal/Git Steve-<version>-mas.pkg` with Apple's
+6. Upload `dist/mas-universal/GitLantern-<version>-mas.pkg` with Apple's
    [Transporter](https://apps.apple.com/app/transporter/id1450874784) app. Then pick the build in App Store
    Connect, fill in the listing, and submit it for review.
 

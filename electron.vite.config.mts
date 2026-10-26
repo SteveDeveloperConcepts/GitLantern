@@ -16,7 +16,7 @@ const CSP = [
 // React Fast Refresh injects an inline preamble script.
 function contentSecurityPolicy(): Plugin {
   return {
-    name: 'gitsteve:csp',
+    name: 'gitlantern:csp',
     apply: 'build',
     transformIndexHtml: (html) =>
       html.replace('<head>', `<head>\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`)

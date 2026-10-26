@@ -7,7 +7,7 @@ export interface AppSettings {
   gitPath?: string
   /** Folder the clone dialog last cloned into. */
   cloneFolder?: string
-  /** OAuth applications for servers Git Steve has none for, such as a company GitLab: host → client ID. */
+  /** OAuth applications for servers GitLantern has none for, such as a company GitLab: host → client ID. */
   oauthClients?: Record<string, string>
 }
 
@@ -15,6 +15,20 @@ const MAX_RECENT = 12
 
 const isStringMap = (value: unknown): value is Record<string, string> =>
   typeof value === 'object' && value !== null && Object.values(value).every((v) => typeof v === 'string')
+
+/**
+ * GitLantern was called Git Steve, and its data folder was named after it. On the first start
+ * after the rename, copy the old settings (recent repositories, clone folder, gitPath) across.
+ * Accounts and remembered answers stay behind: their tokens are encrypted with a key that belongs
+ * to the old app, so they're connected again. Returns whether anything was copied.
+ */
+export function adoptOldSettings(oldFolder: string, file: string): boolean {
+  const old = path.join(oldFolder, 'settings.json')
+  if (fs.existsSync(file) || !fs.existsSync(old)) return false
+  fs.mkdirSync(path.dirname(file), { recursive: true })
+  fs.copyFileSync(old, file)
+  return true
+}
 
 export class Settings {
   private data: AppSettings

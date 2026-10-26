@@ -81,7 +81,7 @@ function run(command: string, args: string[], env: Record<string, string>, timeo
 
 /** Create ~/.ssh/id_ed25519 (no passphrase). Never overwrites an existing key. */
 export async function generateKey(sshKeygen: string, comment: string): Promise<SshKeyInfo> {
-  if (findKeyFile()) throw new Error('You already have an SSH key, so Git Steve won’t create another one.')
+  if (findKeyFile()) throw new Error('You already have an SSH key, so GitLantern won’t create another one.')
   fs.mkdirSync(sshDir(), { recursive: true, mode: 0o700 })
   const keyPath = path.join(sshDir(), 'id_ed25519').replace(/\\/g, '/')
   const { code, output } = await run(sshKeygen, ['-q', '-t', 'ed25519', '-C', comment || 'git-steve', '-f', keyPath, '-N', ''], {}, 30_000)

@@ -34,7 +34,7 @@ export function ForcePushDialog({ branch, upstream, expected, replaced, ahead, o
           {commits(replaced)}), so a normal push can’t go ahead.
         </p>
         <p className="dialog-text">
-          A force push replaces {upstream} with {branch} as it is now{ahead > 0 ? `: ${commits(ahead)} ${ahead === 1 ? 'goes' : 'go'} up` : ''}. Git Steve
+          A force push replaces {upstream} with {branch} as it is now{ahead > 0 ? `: ${commits(ahead)} ${ahead === 1 ? 'goes' : 'go'} up` : ''}. GitLantern
           checks that {upstream} is still at {expected.slice(0, 7)}, and refuses if anyone has pushed to it since, so their work
           can’t be lost.
         </p>

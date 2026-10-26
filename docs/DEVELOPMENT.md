@@ -1,4 +1,4 @@
-# Developing Git Steve
+# Developing GitLantern
 
 Requirements: Node.js 22.12+, Yarn 1 and Git on `PATH`.
 
@@ -28,7 +28,8 @@ Store setup, signing and submission are in [RELEASING.md](RELEASING.md).
 ```
 src/
   main/                 Electron main process (Node)
-    index.ts            window, single-instance lock, startup wiring
+    index.ts            window, single-instance lock, startup wiring (and settings.json carried over
+                        from the "Git Steve" data folder, the app's old name)
     ipc.ts              IPC handlers: validate renderer input, only touch repos the user opened
     git/runGit.ts       spawn wrapper: env, exit codes, output limits, GitError
     git/commands.ts     typed git operations (status, log, diff, stage, commit, fetch/pull/push, ...)
@@ -101,7 +102,7 @@ made in a terminal meanwhile can't shift the target. A stash is shown like a com
 changes against its first parent, plus the untracked files from its third parent (diffed as
 `<hash>^3`). A conflicting stash leaves no state file, so `applyStash` reports conflicts from
 `ls-files --unmerged`. Cherry-pick uses `-m 1` for merge commits. When a pick stops without conflicts
-the branch already has its changes: Git Steve calls it off instead of leaving an empty cherry-pick.
+the branch already has its changes: GitLantern calls it off instead of leaving an empty cherry-pick.
 
 **Conflicts.** `shared/conflicts.ts` walks git's markers (diff3 bases included) and replaces one
 conflict with a side, keeping every other byte: the file is read and written as latin1, so any encoding
@@ -134,7 +135,7 @@ is fetched from `refs/pull/N/head` (GitHub, Gitea) or `refs/merge-requests/N/hea
 `pr/N`. The renderer loads the list when the tab opens and after a push, not on every refresh.
 
 **Browser sign-in.** Offered only for hosts with an OAuth client ID: `REGISTERED_CLIENTS` in
-`accounts/oauth.ts` (empty until Git Steve's own applications are registered) plus `oauthClients` in
+`accounts/oauth.ts` (empty until GitLantern's own applications are registered) plus `oauthClients` in
 settings.json. GitHub uses the device flow: the app shows the user code and polls the token endpoint.
 GitLab and Gitea use an authorization code with PKCE; a one-off server on 127.0.0.1 (random port)
 takes the redirect and ignores requests without the right `state`. Neither flow uses a client
@@ -147,7 +148,7 @@ client IDs in `REGISTERED_CLIENTS`:
 
 - GitHub: an **OAuth App** (not a GitHub App) with **Enable Device Flow** ticked. The callback URL
   isn't used.
-- GitLab: an application under the Git Steve account's **Applications**, **not confidential**,
+- GitLab: an application under the GitLantern account's **Applications**, **not confidential**,
   redirect URI `http://127.0.0.1/callback` (GitLab accepts any port on 127.0.0.1), scopes `api`,
   `read_repository` and `write_repository`.
 

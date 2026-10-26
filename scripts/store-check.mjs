@@ -32,7 +32,7 @@ if (target === 'msstore') {
     problems.push(`Missing ${profile}. Download it from developer.apple.com → Certificates, IDs & Profiles → Profiles (${guide}).`)
   }
   warnings.push(
-    `Git Steve can't run Git inside Apple's App Sandbox yet, so this build won't pass App Review.\n  See "Mac App Store" in ${guide} for what's missing.`
+    `GitLantern can't run Git inside Apple's App Sandbox yet, so this build won't pass App Review.\n  See "Mac App Store" in ${guide} for what's missing.`
   )
 } else {
   console.error('Usage: node scripts/store-check.mjs msstore|mas|mas-dev')

@@ -39,9 +39,9 @@ export async function startAskPassServer(options: {
   let socketDir: string | undefined
   let address: string
   if (process.platform === 'win32') {
-    address = `\\\\.\\pipe\\gitsteve-askpass-${process.pid}-${randomBytes(6).toString('hex')}`
+    address = `\\\\.\\pipe\\gitlantern-askpass-${process.pid}-${randomBytes(6).toString('hex')}`
   } else {
-    socketDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitsteve-'))
+    socketDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitlantern-'))
     fs.chmodSync(socketDir, 0o700)
     address = path.join(socketDir, 'askpass.sock')
   }

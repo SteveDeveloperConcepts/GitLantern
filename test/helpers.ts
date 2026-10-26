@@ -5,7 +5,7 @@ import { configureGit, runGit } from '../src/main/git/runGit'
 
 /** Point git at an empty global config so the user's hooks, signing and credential helpers stay out. */
 export function isolateGit(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gitsteve-home-'))
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gitlantern-home-'))
   const globalConfig = path.join(home, 'gitconfig')
   fs.writeFileSync(globalConfig, '')
   const env = {
@@ -21,7 +21,7 @@ export function isolateGit(): string {
 }
 
 export async function makeRepo(): Promise<string> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitsteve-repo-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitlantern-repo-'))
   await runGit(['init', '-q', '-b', 'main'], { cwd: dir })
   return path.resolve(dir)
 }

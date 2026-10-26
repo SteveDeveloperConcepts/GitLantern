@@ -4,12 +4,12 @@
 // (A named import also avoids the bundler's shared interop chunk.)
 import { createConnection } from 'node:net'
 
-const address = process.env.GITSTEVE_ASKPASS_ADDRESS
-const token = process.env.GITSTEVE_ASKPASS_TOKEN
+const address = process.env.GITLANTERN_ASKPASS_ADDRESS
+const token = process.env.GITLANTERN_ASKPASS_TOKEN
 const prompt = process.argv.slice(2).join(' ')
 
 if (!address || !token) {
-  process.stderr.write('gitsteve-askpass: GITSTEVE_ASKPASS_ADDRESS and GITSTEVE_ASKPASS_TOKEN must be set\n')
+  process.stderr.write('gitlantern-askpass: GITLANTERN_ASKPASS_ADDRESS and GITLANTERN_ASKPASS_TOKEN must be set\n')
   process.exit(1)
 }
 

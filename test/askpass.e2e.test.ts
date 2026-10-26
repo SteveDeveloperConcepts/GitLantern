@@ -26,7 +26,7 @@ describe.skipIf(!fs.existsSync(helper))('askpass round trip (needs `npm run buil
       }
     })
     // A folder with a space, like "Application Support" on macOS or a Windows profile "John Smith".
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'git steve-'))
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'git lantern-'))
     env = askPassEnv({
       trampoline: writeTrampoline(dir),
       nodePath: process.execPath,
@@ -58,7 +58,7 @@ describe.skipIf(!fs.existsSync(helper))('askpass round trip (needs `npm run buil
 
   it('rejects a helper that presents the wrong token', async () => {
     prompts.length = 0
-    await expect(credentialFill({ ...env, GITSTEVE_ASKPASS_TOKEN: 'wrong' })).rejects.toThrow()
+    await expect(credentialFill({ ...env, GITLANTERN_ASKPASS_TOKEN: 'wrong' })).rejects.toThrow()
     expect(prompts).toEqual([])
   })
 })

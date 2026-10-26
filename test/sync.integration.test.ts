@@ -14,7 +14,7 @@ const head = async (repo: string, ref = 'HEAD'): Promise<string> => (await git(r
 
 /** A bare "server" repository with one commit on main, and two clones of it: ours and someone else's. */
 async function setup(): Promise<{ ours: string; theirs: string }> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitsteve-sync-'))
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitlantern-sync-'))
   const server = path.join(dir, 'server.git')
   await runGit(['init', '-q', '--bare', '-b', 'main', server], { cwd: dir })
   const ours = path.join(dir, 'ours')

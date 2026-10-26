@@ -1,5 +1,5 @@
-appId: com.developerconcepts.gitsteve
-productName: Git Steve
+appId: com.developerconcepts.gitlantern
+productName: GitLantern
 copyright: Copyright © 2026 Steve Vaubell
 directories:
   buildResources: build
@@ -23,16 +23,16 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   # No spaces in release file names: GitHub renames uploads that have them.
-  artifactName: GitSteve-Setup-${version}.${ext}
+  artifactName: GitLantern-Setup-${version}.${ext}
 
 # Microsoft Store package: `yarn dist:msstore`. See docs/RELEASING.md.
 appx:
   # Copy these three from Partner Center → your app → Product management → Product identity.
-  identityName: REPLACE-ME.GitSteve # Package/Identity/Name
+  identityName: REPLACE-ME.GitLantern # Package/Identity/Name
   publisher: CN=REPLACE-ME # Package/Identity/Publisher
   publisherDisplayName: REPLACE-ME # Package/Properties/PublisherDisplayName
-  applicationId: GitSteve
-  displayName: Git Steve
+  applicationId: GitLantern
+  displayName: GitLantern
   backgroundColor: transparent
   languages:
     - en-US
@@ -47,7 +47,7 @@ mac:
   category: public.app-category.developer-tools
   hardenedRuntime: true
 dmg:
-  artifactName: GitSteve-${version}-${arch}.${ext}
+  artifactName: GitLantern-${version}-${arch}.${ext}
 
 # Mac App Store package: `yarn dist:mas` (store) or `yarn dist:mas-dev` (local test). See docs/RELEASING.md.
 mas:

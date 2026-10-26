@@ -95,4 +95,4 @@ jobs:
           fi
           sed "s/<version>/$version/g" .github/release-notes.md >> "$notes"
           gh release create "$GITHUB_REF_NAME" installers/* --verify-tag \
-            --title "Git Steve $version" --notes-file "$notes" --generate-notes
+            --title "GitLantern $version" --notes-file "$notes" --generate-notes

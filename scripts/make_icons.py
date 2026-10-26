@@ -1,4 +1,4 @@
-"""Draw Git Steve's app icon and the Microsoft Store tile images.
+"""Draw GitLantern's app icon and the Microsoft Store tile images.
 
 Optional: the generated files are committed, so builds don't need this. Run it again after changing
 the design (needs Python 3 and Pillow: `pip install pillow`):

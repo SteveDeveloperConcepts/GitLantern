@@ -25,7 +25,7 @@ export function WelcomeScreen({ onPick, onOpen, onClone, onConnect }: Props) {
         <div className="welcome-brand">
           <span className="brand-mark large" aria-hidden="true" />
           <div>
-            <h1>Git Steve</h1>
+            <h1>GitLantern</h1>
             <p className="dim">Open a project, clone one from any Git service, or connect your accounts.</p>
           </div>
         </div>

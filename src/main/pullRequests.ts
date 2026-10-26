@@ -71,7 +71,7 @@ export async function checkout(repo: string, accounts: AccountStore, number: num
     return pr.sourceBranch
   }
   const ref = FORK_REFS[found.account.provider]
-  if (!ref) throw new Error(`#${number} comes from a fork, which Git Steve can only check out on GitHub, GitLab and Gitea`)
+  if (!ref) throw new Error(`#${number} comes from a fork, which GitLantern can only check out on GitHub, GitLab and Gitea`)
   const local = `pr/${number}`
   await git.checkoutFetched(repo, found.remote.name, ref(number), local)
   return local

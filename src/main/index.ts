@@ -7,7 +7,7 @@ import { resolveGitPath } from './git/resolveGit'
 import { configureGit } from './git/runGit'
 import { registerIpc } from './ipc'
 import { SecretStore } from './secrets'
-import { Settings } from './settings'
+import { adoptOldSettings, Settings } from './settings'
 import { resolveSshTool } from './ssh'
 
 let mainWindow: BrowserWindow | null = null
@@ -20,7 +20,7 @@ function createWindow(): void {
     minWidth: 1000,
     minHeight: 640,
     show: false,
-    title: 'Git Steve',
+    title: 'GitLantern',
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#141518' : '#f4f2ee',
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
@@ -59,6 +59,7 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(async () => {
     const userData = app.getPath('userData')
+    adoptOldSettings(path.join(app.getPath('appData'), 'Git Steve'), path.join(userData, 'settings.json'))
     const settings = new Settings(path.join(userData, 'settings.json'))
     const secrets = new SecretStore(path.join(userData, 'secrets.json'))
     const accounts = new AccountStore(path.join(userData, 'accounts.json'), secrets, () => settings.get().oauthClients ?? {})

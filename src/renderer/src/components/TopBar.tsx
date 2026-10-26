@@ -38,7 +38,7 @@ export function TopBar(props: Props) {
     <header className="topbar">
       <div className="brand">
         <span className="brand-mark" aria-hidden="true" />
-        Git Steve
+        GitLantern
       </div>
       <span className="divider" aria-hidden="true" />
 

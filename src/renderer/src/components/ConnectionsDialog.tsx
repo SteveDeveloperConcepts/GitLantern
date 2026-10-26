@@ -32,7 +32,7 @@ export function ConnectionsDialog({ onClose, onChanged, initialProvider }: Props
     <Modal title="Git services" onClose={onClose} className="modal-split">
       <div className="connections">
         <section className="connections-main">
-          <p className="dim intro">Connect an account once and Git Steve answers sign-in prompts for that server automatically.</p>
+          <p className="dim intro">Connect an account once and GitLantern answers sign-in prompts for that server automatically.</p>
 
           {accounts.length > 0 && (
             <div className="stack">
@@ -100,7 +100,7 @@ export function ConnectionsDialog({ onClose, onChanged, initialProvider }: Props
               <h3>How it works</h3>
               <p>
                 <strong>HTTPS addresses</strong> (https://…) sign in with an access token. Pick your service on the left, create a token
-                there and paste it in. Git Steve stores it encrypted with your system keychain and uses it only for that server.
+                there and paste it in. GitLantern stores it encrypted with your system keychain and uses it only for that server.
               </p>
               <p>
                 <strong>SSH addresses</strong> (git@…) use your SSH key. Add the public key to each service once and every push and pull
@@ -175,7 +175,7 @@ function ConnectForm({ provider, browserHosts, onCancel, onConnected }: ConnectF
         <h3 className="form-title">Sign in to {info.name}</h3>
         {progress?.userCode ? (
           <>
-            <p className="dialog-text">Your browser opened {new URL(progress.url).host}. Enter this code there, then approve Git Steve:</p>
+            <p className="dialog-text">Your browser opened {new URL(progress.url).host}. Enter this code there, then approve GitLantern:</p>
             <div className="user-code mono selectable">{progress.userCode}</div>
             <div className="row-wrap">
               <button onClick={() => void api.clipboard.write(progress.userCode ?? '').then(() => setCopied(true))}>
@@ -196,7 +196,7 @@ function ConnectForm({ provider, browserHosts, onCancel, onConnected }: ConnectF
             )}
           </p>
         )}
-        <p className="field-hint">Git Steve waits for {info.name} to confirm. The token it gets is encrypted with your system keychain.</p>
+        <p className="field-hint">GitLantern waits for {info.name} to confirm. The token it gets is encrypted with your system keychain.</p>
         <div className="modal-actions">
           <button type="button" onClick={() => void api.accounts.cancelSignIn()}>
             Cancel
