@@ -84,7 +84,7 @@ export async function generateKey(sshKeygen: string, comment: string): Promise<S
   if (findKeyFile()) throw new Error('You already have an SSH key, so GitLantern won’t create another one.')
   fs.mkdirSync(sshDir(), { recursive: true, mode: 0o700 })
   const keyPath = path.join(sshDir(), 'id_ed25519').replace(/\\/g, '/')
-  const { code, output } = await run(sshKeygen, ['-q', '-t', 'ed25519', '-C', comment || 'git-steve', '-f', keyPath, '-N', ''], {}, 30_000)
+  const { code, output } = await run(sshKeygen, ['-q', '-t', 'ed25519', '-C', comment || 'gitlantern', '-f', keyPath, '-N', ''], {}, 30_000)
   if (code !== 0) throw new Error(output.trim() || 'ssh-keygen failed')
   const key = await loadKey(sshKeygen)
   if (!key) throw new Error('The key was created but couldn’t be read back')

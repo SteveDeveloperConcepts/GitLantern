@@ -149,8 +149,8 @@ You need [Node.js](https://nodejs.org) 22.12 or newer, [Yarn 1](https://classic.
 (`npm install -g yarn`) and Git.
 
 ```bash
-git clone https://github.com/SteveDeveloperConcepts/GitSteve.git
-cd GitSteve
+git clone https://github.com/SteveDeveloperConcepts/GitLantern.git
+cd GitLantern
 yarn install
 yarn dev             # run the app in development mode
 yarn dist:win        # or: yarn dist:mac (on a Mac) to build an installer into dist/

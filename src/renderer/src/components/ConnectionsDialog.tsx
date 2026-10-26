@@ -309,7 +309,7 @@ function SshKeyCard({ accountHosts }: { accountHosts: string[] }) {
 
   const generate = async () => {
     try {
-      setKey(await api.ssh.generate('git-steve'))
+      setKey(await api.ssh.generate('gitlantern'))
       setNotice('Key created. Copy it and add it to each service’s SSH key settings.')
     } catch (error) {
       setNotice(errorMessage(error))
