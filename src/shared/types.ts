@@ -317,6 +317,16 @@ export interface RepoChangedEvent {
   kinds: ChangeKind[]
 }
 
+/**
+ * A newer GitLantern on GitHub. `ready`: downloaded, and installed when GitLantern restarts or quits
+ * (Windows). `available`: the user downloads it from its release page (macOS, until the app is signed
+ * with a Developer ID).
+ */
+export interface UpdateState {
+  kind: 'ready' | 'available'
+  version: string
+}
+
 export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: string }
 
 /** The API the preload script exposes to the renderer as `window.api`. */
@@ -423,5 +433,12 @@ export interface GitLanternApi {
     available(): Promise<boolean>
     count(): Promise<number>
     clear(): Promise<void>
+  }
+  update: {
+    /** The newer version found since GitLantern started, or null. */
+    state(): Promise<UpdateState | null>
+    onChanged(callback: (state: UpdateState) => void): () => void
+    /** `ready`: quit and install it now. `available`: open its release page in the browser. */
+    install(): Promise<void>
   }
 }

@@ -26,6 +26,7 @@ import * as pullRequests from './pullRequests'
 import type { SecretStore } from './secrets'
 import type { Settings } from './settings'
 import { generateKey, loadKey, testSsh } from './ssh'
+import type { Updater } from './updater'
 import { watchRepo } from './watcher'
 
 interface Context {
@@ -33,6 +34,7 @@ interface Context {
   secrets: SecretStore
   accounts: AccountStore
   askpass: AskPass
+  updater: Updater
   sshTools: { ssh: string; keygen: string }
   getWindow(): BrowserWindow | null
 }
@@ -328,4 +330,7 @@ export function registerIpc(ctx: Context): void {
   handle(Invoke.secretsAvailable, () => ctx.secrets.available())
   handle(Invoke.secretsCount, () => ctx.secrets.keys(REMEMBERED_PREFIX).length)
   handle(Invoke.secretsClear, () => ctx.secrets.clear(REMEMBERED_PREFIX))
+
+  handle(Invoke.updateState, () => ctx.updater.state())
+  handle(Invoke.updateInstall, () => ctx.updater.install())
 }

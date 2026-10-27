@@ -11,7 +11,8 @@ import type {
   PushResult,
   RefKind,
   RepoInfo,
-  Stash
+  Stash,
+  UpdateState
 } from '../../shared/types'
 import {
   branchesForRefs,
@@ -40,6 +41,7 @@ import { PullRequestsPanel } from './components/PullRequestsPanel'
 import { RemotesPanel } from './components/RemotesPanel'
 import { StatusBar } from './components/StatusBar'
 import { TopBar } from './components/TopBar'
+import { UpdateBanner } from './components/UpdateBanner'
 import { WelcomeScreen } from './components/WelcomeScreen'
 import { errorMessage } from './format'
 import { CommitGraph, WORKING_COPY } from './graph/CommitGraph'
@@ -86,11 +88,20 @@ export function App() {
   const [matchesOnly, setMatchesOnly] = useState(false)
   /** Bumped after a push or a new pull request, so the pull request list reloads. */
   const [pullsVersion, setPullsVersion] = useState(0)
+  const [update, setUpdate] = useState<UpdateState | null>(null)
+  /** The version the user put off with "Later". A newer one shows again. */
+  const [updateLater, setUpdateLater] = useState<string | null>(null)
   const closeContextMenu = useCallback(() => setContextMenu(null), [])
   const { status, commits, branches, remotes, stashes, error, refresh } = useRepo(repo, historyFilter)
 
   const reloadAccounts = useCallback(() => void api.accounts.list().then((list) => setAccountCount(list.length)), [])
   useEffect(reloadAccounts, [reloadAccounts])
+
+  // The update may have been found before this window loaded, so ask as well as listen.
+  useEffect(() => {
+    void api.update.state().then((state) => setUpdate((current) => current ?? state))
+    return api.update.onChanged(setUpdate)
+  }, [])
 
   const commitBranchNames = useMemo(() => commitBranches(commits), [commits])
   const terms = useMemo(() => searchTerms(search), [search])
@@ -458,11 +469,22 @@ export function App() {
     </>
   )
   const errorBanner = <Errors errors={errors} onDismiss={(id) => setErrors((list) => list.filter((e) => e.id !== id))} />
+  const updateBanner = update && update.version !== updateLater && (
+    <UpdateBanner
+      update={update}
+      busy={busy !== null}
+      onLater={() => setUpdateLater(update.version)}
+      onInstall={() => void api.update.install().catch((err: unknown) => reportError(errorMessage(err)))}
+    />
+  )
 
   if (!repo) {
     return (
       <div className="app app-welcome">
-        {errorBanner}
+        <div className="notices">
+          {updateBanner}
+          {errorBanner}
+        </div>
         <WelcomeScreen
           onPick={() => openRepo(() => api.repo.pick())}
           onOpen={(path) => openRepo(() => api.repo.open(path))}
@@ -540,6 +562,7 @@ export function App() {
         onAccounts={() => setDialog('accounts')}
       />
       <div className="notices">
+        {updateBanner}
         {operationBanner}
         {errorBanner}
       </div>

@@ -58,7 +58,9 @@ export const Invoke = {
   askpassRespond: 'askpass:respond',
   secretsAvailable: 'secrets:available',
   secretsCount: 'secrets:count',
-  secretsClear: 'secrets:clear'
+  secretsClear: 'secrets:clear',
+  updateState: 'update:state',
+  updateInstall: 'update:install'
 } as const
 
 /** Main → renderer events (webContents.send / ipcRenderer.on). */
@@ -66,5 +68,6 @@ export const Events = {
   repoChanged: 'repo:changed',
   cloneProgress: 'repo:clone-progress',
   askpassRequest: 'askpass:request',
-  signInProgress: 'accounts:sign-in-progress'
+  signInProgress: 'accounts:sign-in-progress',
+  updateChanged: 'update:changed'
 } as const

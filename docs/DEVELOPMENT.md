@@ -42,6 +42,7 @@ src/
     ssh.ts              find / create / convert the user's SSH key, `ssh -T` connection tests
     secrets.ts          safeStorage-encrypted store (Keychain / DPAPI); no plaintext fallback
     watcher.ts          recursive fs.watch → "worktree" or "refs" change events
+    updater.ts          new versions from GitHub releases (electron-updater): installed on Windows, announced on macOS
   askpass/index.ts      helper that git runs as GIT_ASKPASS / SSH_ASKPASS (plain Node, one file)
   preload/index.ts      exposes a typed `window.api` through contextBridge
   shared/               types, IPC channel names, provider definitions (providers.ts),

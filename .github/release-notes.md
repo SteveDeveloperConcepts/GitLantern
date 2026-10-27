@@ -9,6 +9,8 @@
 
 GitLantern uses the Git installed on your computer. If `git --version` doesn't work in a terminal, install [Git](https://git-scm.com/downloads) first.
 
+Once it's installed, GitLantern looks for new versions itself. On Windows it downloads them and installs them when you restart it. On a Mac it tells you when there's a new one to download.
+
 ### Opening it the first time
 
 These builds aren't signed with a publisher certificate yet, so your system warns you once:

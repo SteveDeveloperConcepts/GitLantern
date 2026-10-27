@@ -10,6 +10,12 @@ files:
 # git runs the askpass helper as a plain Node script, so keep it outside the asar archive.
 asarUnpack:
   - out/main/askpass.js
+# Where installed copies look for new versions (src/main/updater.ts). Builds still don't upload anything
+# themselves: the Release workflow attaches the latest*.yml and .blockmap files written next to the installers.
+publish:
+  provider: github
+  owner: SteveDeveloperConcepts
+  repo: GitLantern
 
 win:
   target:

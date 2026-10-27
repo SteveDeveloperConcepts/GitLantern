@@ -85,7 +85,41 @@ GitHub and click **Edit**.
 has only an ad-hoc signature, without which Apple silicon Macs won't open it at all. Users see a warning
 the first time they open either one, and the release notes explain how to get past it. To remove the
 warnings, build signed versions yourself (the notarised DMG below, or a Windows code-signing certificate)
-and replace the files on the release.
+and replace the files on the release. If you replace the Windows installer, also replace `latest.yml` and
+its `.blockmap` with the ones from the same build. Installed copies check the installer against them and
+refuse one that doesn't match.
+
+### How installed copies update
+
+GitLantern checks the latest GitHub release 10 seconds after it starts, then every 4 hours
+(`src/main/updater.ts`):
+
+- **Windows:** it downloads a newer version in the background and shows **Restart now**. If the user
+  doesn't restart, the new version installs the next time they quit GitLantern.
+- **macOS:** it only says a new version is out. **Download** opens the release page. macOS only installs
+  updates signed with a Developer ID, and these builds have an ad-hoc signature. See below for how to
+  turn on full updates.
+- **Store copies and `yarn dev`:** these never check. The stores update their own copies.
+
+Copies of 0.4.1 and earlier don't check. People using those versions have to install the next one by
+hand.
+
+The checks read files that electron-builder writes next to the installers, and the workflow attaches
+them to the release: `latest.yml` (Windows), `latest-mac.yml`, and the `.blockmap` files, which let
+Windows download only what changed. Don't delete them from a release.
+
+Every published release reaches everyone within a few hours, and you can't take it back from copies
+that have already updated. If a release is broken, publish a fixed one with a higher version.
+
+**Full updates on macOS.** Once you have a Developer ID certificate:
+
+1. Sign and notarise the Mac build in the Release workflow instead of using `build/adhoc-mac.yml`.
+2. Add `zip` to `mac.target` in `electron-builder.yml`. Mac updates install from the zip, not the DMG.
+   Add `dist/*.zip` to the files the workflow uploads.
+3. In `updateMode` in `src/main/updater.ts`, return `'install'` for `darwin` too.
+
+Copies with the ad-hoc signature can't install a signed update, so Mac users install the first signed
+version by hand. The notice tells them it's out.
 
 ---
 

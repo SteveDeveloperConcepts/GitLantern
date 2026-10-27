@@ -588,7 +588,8 @@ button.chip:hover {
   flex-direction: column;
   gap: 1px;
 }
-.operation-banner {
+.operation-banner,
+.update-banner {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -597,14 +598,16 @@ button.chip:hover {
   border-bottom: 1px solid var(--border);
   box-shadow: inset 3px 0 0 var(--accent);
 }
-.operation-text {
+.operation-text,
+.update-text {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.operation-text span {
+.operation-text span,
+.update-text span {
   color: var(--text-dim);
   font-size: 12px;
 }

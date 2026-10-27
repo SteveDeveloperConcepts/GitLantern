@@ -85,8 +85,11 @@ managers keep working.
 ### Everything else
 
 - **Dark and light themes:** these follow your system setting.
+- **Updates:** on Windows, a new version downloads in the background and installs when you restart
+  GitLantern. On a Mac, GitLantern tells you when there's a new version to download.
 - **Private by design:** no GitLantern account, no telemetry. It only talks to the network when Git does,
-  or when you ask it to check a token or list your repositories.
+  when you ask it to check a token or list your repositories, and to look for a new version on GitHub.
+  That check sends nothing about you or your repositories.
 
 <table>
   <tr>

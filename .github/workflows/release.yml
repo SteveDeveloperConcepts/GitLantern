@@ -57,12 +57,21 @@ jobs:
             codesign --verify --deep --strict --verbose=2 "$app"
           done
 
+      # Installed copies read latest.yml (Windows) or latest-mac.yml to find a new version, and the
+      # Windows updater uses the .blockmap files to download only what changed. Without them, nobody
+      # gets this release as an update.
+      - name: Check the update files were written
+        shell: bash
+        run: ls dist/latest*.yml dist/*.blockmap
+
       - uses: actions/upload-artifact@v7
         with:
           name: installers-${{ matrix.name }}
           path: |
             dist/*.exe
             dist/*.dmg
+            dist/*.blockmap
+            dist/latest*.yml
           if-no-files-found: error
 
   release:

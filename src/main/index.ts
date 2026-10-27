@@ -9,6 +9,7 @@ import { registerIpc } from './ipc'
 import { SecretStore } from './secrets'
 import { adoptOldSettings, Settings } from './settings'
 import { resolveSshTool } from './ssh'
+import { setupUpdater } from './updater'
 
 let mainWindow: BrowserWindow | null = null
 let askpass: AskPass | undefined
@@ -75,6 +76,7 @@ if (!app.requestSingleInstanceLock()) {
       secrets,
       accounts,
       askpass,
+      updater: setupUpdater(() => mainWindow),
       sshTools: { ssh: resolveSshTool('ssh', gitPath), keygen: resolveSshTool('ssh-keygen', gitPath) },
       getWindow: () => mainWindow
     })
