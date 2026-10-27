@@ -3057,6 +3057,73 @@ input[type='color'] {
   cursor: default;
 }
 
+/* ---- Toasts: how a fetch, pull or push went ---- */
+.toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 40px;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 8px 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--ok);
+  border-radius: 10px;
+  background: var(--bg-elev);
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+}
+.toast.info {
+  border-left-color: var(--accent);
+}
+.toast.error {
+  border-left-color: var(--danger);
+}
+.toast-icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--ok);
+}
+.toast.info .toast-icon {
+  color: var(--accent);
+}
+.toast.error .toast-icon {
+  color: var(--danger-text);
+}
+.toast-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.toast-text span {
+  color: var(--text-dim);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .toast {
+    animation: toast-in 0.18s ease-out;
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
 /* Workspaces on the start screen */
 .workspace-chips {
   display: flex;

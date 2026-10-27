@@ -228,6 +228,13 @@ runs or where a secret goes:
 Custom actions, editors and terminals are started without a shell. Interface size is Chromium's zoom
 factor, set by the main process, so pointer positions and the graph's canvas stay in step.
 
+**Toasts.** `RepoView`'s `run(label, action, success, sync)` marks trips to a remote with `sync`: fetch,
+pull, push, force push, pushing branches and tags, deleting them on a remote, submodule updates, Git LFS
+and checking out pull requests. Each ends with a toast (`toasts.ts`, `components/Toasts.tsx`) repeating
+the status bar's outcome: green when done, amber when it needs a look (a pull that needs a merge or
+rebase, a push that needs a force push), red with the error's first line when it failed. Toasts go after
+5 seconds (9 for failures), stay while pointed at, and at most four show at once.
+
 **Command log.** `runGit` tells a listener when each command starts and ends; `commandLog.ts` keeps the
 last 500 (arguments, folder, duration, exit code, the start of stderr on failure), which the log dialog
 reads every second while it's open. Nothing sent on stdin is kept. The dialog hides the reads every

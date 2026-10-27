@@ -56,6 +56,7 @@ import { TagDialog, UpstreamDialog } from './components/RefDialogs'
 import { RemotesPanel } from './components/RemotesPanel'
 import { StatusBar } from './components/StatusBar'
 import { LfsDialog, SubmoduleDialog, WorktreeDialog } from './components/StructureDialogs'
+import { Toasts } from './components/Toasts'
 import { TopBar } from './components/TopBar'
 import { errorMessage } from './format'
 import { CommitGraph, WORKING_COPY } from './graph/CommitGraph'
@@ -64,6 +65,7 @@ import { layoutGraph } from './graph/layout'
 import { refPills } from './graph/refs'
 import { linkedWithin, matchesSearch, searchTerms } from './graph/search'
 import { rulesFor } from './issueLinks'
+import { addToast, toastDetail, type Toast } from './toasts'
 import { useRepo } from './useRepo'
 
 const api = window.api
@@ -131,7 +133,19 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
   /** A pull request open in review mode, in place of the history. */
   const [reviewing, setReviewing] = useState<{ pr: PullRequest; noun: string } | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
+  const [message, setStatusMessage] = useState<string | null>(null)
+  /** The status bar's last message: a fetch, pull or push's toast repeats how it went. */
+  const lastMessage = useRef<string | null>(null)
+  /** Set by an action whose outcome needs a look (push needs a force push, pull needs a merge or rebase). */
+  const needsLook = useRef(false)
+  const setMessage = useCallback((text: string | null) => {
+    lastMessage.current = text
+    setStatusMessage(text)
+  }, [])
+  const [toasts, setToasts] = useState<Toast[]>([])
+  const toastId = useRef(0)
+  const showToast = useCallback((toast: Omit<Toast, 'id'>) => setToasts((list) => addToast(list, { ...toast, id: ++toastId.current })), [])
+  const dismissToast = useCallback((id: number) => setToasts((list) => list.filter((t) => t.id !== id)), [])
   const [lastSync, setLastSync] = useState<number | null>(null)
   const [errors, setErrors] = useState<AppError[]>([])
   const [dialog, setDialog] = useState<RepoDialog | null>(null)
@@ -217,24 +231,33 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
     if (error) reportError(error)
   }, [error, reportError])
 
-  /** Run a git action with a busy indicator, report the outcome and refresh afterwards. */
+  /**
+   * Run a git action with a busy indicator, report the outcome and refresh afterwards. `sync` marks a
+   * trip to a remote (fetch, pull, push…): it ends with a toast saying how it went.
+   */
   const run = useCallback(
     async (label: string, action: (repoPath: string) => Promise<void>, success?: string, sync = false) => {
       setBusy(label)
       setMessage(null)
+      needsLook.current = false
       try {
         await action(repo.path)
         if (success) setMessage(success)
-        if (sync) setLastSync(Date.now())
+        if (sync) {
+          setLastSync(Date.now())
+          showToast({ tone: needsLook.current ? 'info' : 'ok', title: lastMessage.current ?? `${label} finished` })
+        }
       } catch (err) {
-        reportError(errorMessage(err))
+        const text = errorMessage(err)
+        reportError(text)
+        if (sync) showToast({ tone: 'error', title: `${label} failed`, detail: toastDetail(text) })
       } finally {
         // Stay busy until the new state is loaded, so menus and buttons never act on the old one.
         await refresh()
         setBusy(null)
       }
     },
-    [repo.path, refresh, reportError]
+    [repo.path, refresh, reportError, setMessage, showToast]
   )
 
   /** Like `run`, for commands that can stop on conflicts: those open the Changes tab instead of reporting success. */
@@ -268,7 +291,8 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
       async (repoPath) => {
         const { outcome, upstream } = await api.git.pull(repoPath)
         if (outcome === 'diverged') {
-          setMessage(`${upstream} and your branch have both changed`)
+          needsLook.current = true
+          setMessage(`${upstream} and your branch have both changed: merge or rebase`)
           setIntegrate({ kind: 'merge', target: { ref: upstream, label: upstream }, pull: true })
         } else {
           setMessage(outcome === 'up-to-date' ? `Already up to date with ${upstream}` : `Pulled from ${upstream}`)
@@ -284,10 +308,12 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
       async (repoPath) => {
         const result = await api.git.push(repoPath)
         if (result.outcome === 'needs-force') {
+          needsLook.current = true
           setMessage(`${result.upstream} has old copies of your commits`)
           setForcePush(result)
         } else {
-          setMessage('Pushed')
+          const where = status?.branch.upstream ?? remotes.find((r) => r.name === 'origin')?.name ?? remotes[0]?.name
+          setMessage(`Pushed ${status?.branch.head ?? 'HEAD'}${where ? ` to ${where}` : ''}`)
           setPullsVersion((n) => n + 1)
         }
       },
@@ -298,9 +324,14 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
   const checkout = (branch: Branch) => run(`Checking out ${branch.name}`, (path) => api.git.checkout(path, branch), `Checked out ${branch.name}`)
 
   const checkoutPullRequest = (pr: PullRequest) =>
-    void run(`Checking out #${pr.number}`, async (path) => {
-      setMessage(`Checked out ${await api.pullRequests.checkout(path, pr.number)} for #${pr.number}`)
-    })
+    void run(
+      `Checking out #${pr.number}`,
+      async (path) => {
+        setMessage(`Checked out ${await api.pullRequests.checkout(path, pr.number)} for #${pr.number}`)
+      },
+      undefined,
+      true
+    )
 
   const applyStash = (stash: Stash, pop: boolean) =>
     runOperation(
@@ -362,7 +393,7 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
     if (branch.kind === 'remote') {
       const slash = branch.name.indexOf('/')
       if (!window.confirm(`Delete ${branch.name.slice(slash + 1)} on ${branch.name.slice(0, slash)}? Anyone who uses it there loses it too.`)) return
-      void run(`Deleting ${branch.name}`, (path) => api.git.deleteRemoteBranch(path, branch.name), `Deleted ${branch.name}`)
+      void run(`Deleting ${branch.name}`, (path) => api.git.deleteRemoteBranch(path, branch.name), `Deleted ${branch.name}`, true)
       return
     }
     if (!window.confirm(`Delete the branch ${branch.name}? Its commits stay if another branch has them.`)) return
@@ -456,7 +487,7 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
     pushTag: (name, remote) => void run(`Pushing ${name}`, (path) => api.git.pushTag(path, name, remote), `Pushed the tag ${name} to ${remote}`, true),
     deleteRemoteTag: (name, remote) => {
       if (!window.confirm(`Delete the tag ${name} on ${remote}?`)) return
-      void run(`Deleting ${name} on ${remote}`, (path) => api.git.deleteRemoteTag(path, name, remote), `Deleted the tag ${name} on ${remote}`)
+      void run(`Deleting ${name} on ${remote}`, (path) => api.git.deleteRemoteTag(path, name, remote), `Deleted the tag ${name} on ${remote}`, true)
     },
     customAction: runCustom
   }
@@ -886,7 +917,7 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
           }}
         />
       )}
-      {dialog?.kind === 'lfs' && <LfsDialog repoPath={repo.path} onClose={() => setDialog(null)} run={(label, action, success) => run(label, action, success)} />}
+      {dialog?.kind === 'lfs' && <LfsDialog repoPath={repo.path} onClose={() => setDialog(null)} run={(label, action, success) => run(label, action, success, true)} />}
       {dialog?.kind === 'flow' && (
         <FlowDialog
           flow={dialog.flow}
@@ -1275,6 +1306,7 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
         </main>
       </div>
       <StatusBar status={status} remotes={remotes} busy={busy} message={message} lastSync={lastSync} />
+      <Toasts toasts={toasts} onDismiss={dismissToast} />
       {dialogs}
       {contextMenu && <ContextMenu {...contextMenu} onClose={closeContextMenu} />}
     </div>

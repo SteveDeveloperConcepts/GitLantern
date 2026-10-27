@@ -13,10 +13,12 @@ beforeAll(() => {
 })
 
 const head = async (repo: string, ref = 'HEAD'): Promise<string> => (await git(repo, 'rev-parse', ref)).trim()
-const tempFolder = (prefix: string): string => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+// Real paths, as git reports them: the temp folder can be a symlink (macOS's /var → /private/var) or
+// carry a Windows 8.3 short name (C:\Users\RUNNER~1 on GitHub's runners).
+const tempFolder = (prefix: string): string => fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)))
 
 async function repoWith(file: string, contents: string, unixSeconds = 1_700_000_000): Promise<string> {
-  const repo = await makeRepo()
+  const repo = fs.realpathSync.native(await makeRepo())
   write(repo, file, contents)
   await commitAt(repo, `add ${file}`, unixSeconds)
   return repo
@@ -173,6 +175,13 @@ describe('worktrees', () => {
     await structure.lockWorktree(repo, feature, false)
     expect((await structure.worktrees(repo)).map((entry) => entry.locked)).toEqual([false, false, false])
     await expect(structure.lockWorktree(repo, repo, true)).rejects.toThrow(/main worktree can’t be locked/)
+
+    // The same worktree named another way (a junction here; macOS's /var or an 8.3 short name on CI).
+    const alias = path.join(tempFolder('gitlantern-alias-'), 'link')
+    fs.symlinkSync(parent, alias, 'junction')
+    await structure.lockWorktree(repo, path.join(alias, 'feature'), true)
+    expect((await structure.worktrees(repo)).map((entry) => entry.locked)).toEqual([false, true, false])
+    await structure.lockWorktree(repo, path.join(alias, 'feature'), false)
 
     await expect(structure.removeWorktree(repo, repo, false)).rejects.toThrow(/main worktree can’t be removed/)
     await expect(structure.removeWorktree(feature, feature, false)).rejects.toThrow(/open in this window/)

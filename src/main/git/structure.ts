@@ -222,7 +222,10 @@ export async function worktrees(repo: string): Promise<Worktree[]> {
 }
 
 async function listedWorktree(repo: string, folder: string): Promise<Worktree> {
-  const entry = (await worktrees(repo)).find((candidate) => samePath(candidate.path, folder))
+  // git lists real paths; the folder may be named another way (macOS's /var, a Windows 8.3 short name).
+  const [list, wanted] = await Promise.all([worktrees(repo), realPath(folder)])
+  const real = await Promise.all(list.map((candidate) => realPath(candidate.path)))
+  const entry = list.find((candidate, index) => samePath(candidate.path, folder) || samePath(real[index] ?? candidate.path, wanted))
   if (!entry) throw new Error(`${folder} isn’t a worktree of this repository`)
   return entry
 }

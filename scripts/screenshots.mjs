@@ -577,6 +577,21 @@ async function scenes(page, repos) {
     await page.run(`await click('.pr-review-head button', 'Finish review'); await waitFor('.radio-card'); await click('.radio-card', 'Approve'); const area = find('.modal textarea'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(area, 'Lovely work. Two small colour notes, otherwise ready to go.'); area.dispatchEvent(new Event('input', { bubbles: true }))`)
     await page.shot('pr-review-submit')
     await page.run(`await closeModal()`)
+
+    // Toasts: a real fetch and push, through the ssh stand-in to the demo remote.
+    git(repos.web, ['remote', 'remove', 'gitlab'])
+    await page.run(`
+      await click('.pr-review-head button[aria-label="Back to the history"]')
+      await click('.segmented button', 'Fetch')
+      // Pointing at a toast keeps it, so the fetch's stays for the picture.
+      ;(await waitFor('.toast', 'Fetched', 30000)).dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+      // The buttons wait for the refresh after the fetch, and the push's.
+      const settled = async () => { for (let t = 0; t < 100 && find('.segmented button', 'Push').disabled; t++) await sleep(100) }
+      await settled()
+      await click('.segmented button', 'Push'); await waitFor('.toast', 'Pushed', 30000)
+      await settled()
+    `)
+    await page.shot('toasts')
   } finally {
     server.close()
   }

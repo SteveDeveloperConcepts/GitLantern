@@ -113,7 +113,9 @@ installed, so your existing config, hooks, signing keys and credential managers 
 - **Fetch, pull and push:** fetch all remotes (by hand, or every few minutes in the background), pull and
   push. The buttons show how many commits are waiting. Pull never makes a merge commit behind your back.
   When your branch and the remote have both moved on, it asks whether to merge or rebase. A refused push
-  is explained in plain words. A new branch's upstream is set on its first push.
+  is explained in plain words. A new branch's upstream is set on its first push. Every fetch, pull and
+  push (and other trips to a remote, like pushing a tag) ends with a toast in the corner saying how it
+  went.
 - **Force push after a rebase:** when the remote only has old copies of commits you've since rebased
   or amended, Push offers a force push. It's a lease: it goes ahead only while the remote branch is
   still where GitLantern last saw it, so someone else's new commits are never thrown away.
@@ -185,6 +187,14 @@ installed, so your existing config, hooks, signing keys and credential managers 
   <tr>
     <td align="center">Connect GitHub, GitLab, Bitbucket, Azure DevOps, Gitea or any server</td>
     <td align="center">Light and dark themes</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/toasts.png" alt="Toasts in the corner: Fetched all remotes, Pushed main to origin/main" /></td>
+    <td><img src="docs/screenshots/command-log.png" alt="Git command log listing the commands GitLantern ran, with timings and exit codes" /></td>
+  </tr>
+  <tr>
+    <td align="center">A toast for every fetch, pull and push</td>
+    <td align="center">Every git command, in the command log</td>
   </tr>
 </table>
 
