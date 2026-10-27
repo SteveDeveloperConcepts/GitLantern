@@ -20,6 +20,13 @@ export interface GitResult {
   exitCode: number
 }
 
+/** Like {@link GitResult}, with stdout as bytes: file contents, images, archives. */
+export interface GitRawResult {
+  stdout: Buffer
+  stderr: string
+  exitCode: number
+}
+
 export class GitError extends Error {
   constructor(
     readonly args: string[],
@@ -44,19 +51,46 @@ export function configureGit(options: Partial<GitConfig>): void {
   Object.assign(config, options)
 }
 
+/** The git executable every call runs: a full path once resolved, else `git` from PATH. */
+export function gitExecutable(): string {
+  return config.gitPath
+}
+
+/** Told about every git command: once when it starts, once when it ends (for the command log). */
+export interface CommandListener {
+  started(args: string[], cwd: string): number
+  finished(id: number, exitCode: number | null, stderr: string): void
+}
+
+let listener: CommandListener | null = null
+
+export function setCommandListener(next: CommandListener | null): void {
+  listener = next
+}
+
 const DEFAULT_MAX_OUTPUT = 64 * 1024 * 1024
 // Machine-readable output regardless of the user's config.
 const GLOBAL_ARGS = ['-c', 'color.ui=false', '-c', 'core.quotepath=false']
 
-export function runGit(args: string[], options: GitOptions): Promise<GitResult> {
+export async function runGit(args: string[], options: GitOptions): Promise<GitResult> {
+  const result = await runGitRaw(args, options)
+  return { ...result, stdout: result.stdout.toString('utf8') }
+}
+
+export function runGitRaw(args: string[], options: GitOptions): Promise<GitRawResult> {
   const allowed = options.allowedExitCodes ?? [0]
   const maxOutput = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT
+  const logId = listener?.started(args, options.cwd)
+  const logged = (exitCode: number | null, stderr: string): void => {
+    if (logId !== undefined) listener?.finished(logId, exitCode, stderr)
+  }
 
   return new Promise((resolve, reject) => {
     let settled = false
     const fail = (error: Error): void => {
       if (!settled) {
         settled = true
+        logged(error instanceof GitError ? error.exitCode : null, error instanceof GitError ? error.stderr || error.message : error.message)
         reject(error)
       }
     }
@@ -96,10 +130,11 @@ export function runGit(args: string[], options: GitOptions): Promise<GitResult> 
 
     child.on('close', (code) => {
       if (settled) return
-      const out = Buffer.concat(stdout).toString('utf8')
+      const out = Buffer.concat(stdout)
       const err = Buffer.concat(stderr).toString('utf8')
       if (code !== null && allowed.includes(code)) {
         settled = true
+        logged(code, '')
         resolve({ stdout: out, stderr: err, exitCode: code })
       } else {
         fail(new GitError(args, code, err))

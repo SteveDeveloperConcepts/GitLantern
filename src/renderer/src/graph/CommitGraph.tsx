@@ -29,9 +29,14 @@ interface Props {
   /** Commit HEAD points at; drawn with an outer ring. */
   headHash: string | null
   selectedHash: string | null
+  /** A second commit picked with Ctrl/⌘-click, to compare with the selected one. */
+  compareHash?: string | null
+  /** Commits a bisect marked: shown with a good / bad tag. */
+  bisect?: { good: ReadonlySet<string>; bad: string | null } | null
   /** Commits matching the search box; the others are dimmed. Null when nothing is searched for. */
   matches?: ReadonlySet<string> | null
-  onSelect(hash: string): void
+  /** `compare`: Ctrl/⌘-click, to compare this commit with the selected one. */
+  onSelect(hash: string, options?: { compare: boolean }): void
   /** Right-click (or the menu key) on a commit; `ref` is set when it was on one of its labels. */
   onContextMenu(commit: Commit, ref: { name: string; kind: RefKind } | null, position: { x: number; y: number }): void
 }
@@ -40,7 +45,18 @@ interface Props {
  * Virtualised commit list. Only visible rows are rendered. A canvas pinned to the viewport
  * draws the lanes for those rows and is redrawn on scroll.
  */
-export function CommitGraph({ commits, layout, branches, headHash, selectedHash, matches = null, onSelect, onContextMenu }: Props) {
+export function CommitGraph({
+  commits,
+  layout,
+  branches,
+  headHash,
+  selectedHash,
+  compareHash = null,
+  bisect = null,
+  matches = null,
+  onSelect,
+  onContextMenu
+}: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -194,11 +210,11 @@ export function CommitGraph({ commits, layout, branches, headHash, selectedHash,
             return (
               <div
                 key={commit.hash}
-                className={`commit-row${commit.hash === selectedHash ? ' selected' : ''}${working ? ' working' : ''}${
-                  matches && !matches.has(commit.hash) ? ' dimmed' : ''
-                }`}
+                className={`commit-row${commit.hash === selectedHash ? ' selected' : ''}${commit.hash === compareHash ? ' compared' : ''}${
+                  working ? ' working' : ''
+                }${matches && !matches.has(commit.hash) ? ' dimmed' : ''}`}
                 style={{ top: index * ROW_HEIGHT, height: ROW_HEIGHT, paddingLeft: graphWidth }}
-                onClick={() => onSelect(commit.hash)}
+                onClick={(event) => onSelect(commit.hash, { compare: event.ctrlKey || event.metaKey })}
                 onContextMenu={(event) => {
                   event.preventDefault()
                   if (working) return
@@ -208,6 +224,8 @@ export function CommitGraph({ commits, layout, branches, headHash, selectedHash,
                 }}
               >
                 <span className="col-subject">
+                  {bisect?.bad === commit.hash && <span className="bisect-mark bad">bad</span>}
+                  {bisect?.good.has(commit.hash) && <span className="bisect-mark good">good</span>}
                   {refPills(commit.refs).map((pill) => (
                     <span
                       key={pill.key}

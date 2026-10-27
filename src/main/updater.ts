@@ -13,13 +13,16 @@ const CHECK_EVERY_MS = 4 * 60 * 60 * 1000
  * How this copy gets new versions from GitHub releases:
  * - `install`: download in the background, install on restart (the Windows installer).
  * - `notify`: say a new version is out and link to it. macOS only installs updates signed with a
- *   Developer ID, and the Mac builds have only an ad-hoc signature.
+ *   Developer ID, and the Mac builds have only an ad-hoc signature. A Linux .deb is updated through
+ *   its package, so it's told the same way.
  * - null: none. Development runs, and Store copies, which their store updates.
  */
-export function updateMode(env: { packaged: boolean; platform: NodeJS.Platform; store: boolean }): 'install' | 'notify' | null {
+export function updateMode(env: { packaged: boolean; platform: NodeJS.Platform; store: boolean; appImage?: boolean }): 'install' | 'notify' | null {
   if (!env.packaged || env.store) return null
   if (env.platform === 'win32') return 'install'
   if (env.platform === 'darwin') return 'notify'
+  // An AppImage replaces itself, like the Windows installer.
+  if (env.platform === 'linux') return env.appImage ? 'install' : 'notify'
   return null
 }
 
@@ -35,7 +38,8 @@ export function setupUpdater(getWindow: () => BrowserWindow | null): Updater {
   const mode = updateMode({
     packaged: app.isPackaged,
     platform: process.platform,
-    store: process.windowsStore || process.mas
+    store: process.windowsStore || process.mas,
+    appImage: process.env.APPIMAGE !== undefined
   })
   if (!mode) return { state: () => null, install: () => {} }
 

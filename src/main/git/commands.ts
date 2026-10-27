@@ -4,14 +4,17 @@ import { countConflicts, resolveConflict as resolveConflictText } from '../../sh
 import { parsePatch, patchPaths } from '../../shared/patch'
 import { credentialOrigin, parseRemoteUrl, repoNameFromUrl } from '../../shared/remoteUrl'
 import type {
+  BisectState,
   Branch,
   BranchComparison,
   ChangedFile,
   CloneProgress,
   Commit,
   CommitDetail,
+  CommitSignature,
   ConflictPick,
   ConnectionTest,
+  DiffOptions,
   DiffTarget,
   LogFilter,
   OperationResult,
@@ -67,7 +70,7 @@ export function assertRemoteUrl(url: string): void {
 }
 
 const REMOTE_NAME = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/
-function assertRemoteName(name: string): void {
+export function assertRemoteName(name: string): void {
   if (!REMOTE_NAME.test(name) || name.includes('..') || name.endsWith('/') || name.endsWith('.lock')) {
     throw new Error(`"${name}" is not a valid remote name`)
   }
@@ -77,30 +80,30 @@ function assertRemoteName(name: string): void {
 export const MAX_DIFF_BYTES = 2 * 1024 * 1024
 const HASH = /^[0-9a-f]{4,64}$/i
 
-function assertHash(hash: string): void {
+export function assertHash(hash: string): void {
   if (!HASH.test(hash)) throw new Error(`Invalid commit hash: ${hash}`)
 }
 
 /** A branch name or commit hash from the UI. Rejects anything git could read as an option or a range. */
-function assertRevision(ref: string): void {
+export function assertRevision(ref: string): void {
   if (!ref || ref.startsWith('-') || ref.includes('..') || /[\s~^:?*[\\\x00-\x1f\x7f]/.test(ref)) {
     throw new Error(`Not a branch or commit: ${ref}`)
   }
 }
 
 /** Accept git's prepared commit messages instead of opening an editor, which would wait forever. */
-const NO_EDITOR = { GIT_EDITOR: 'true' }
+export const NO_EDITOR = { GIT_EDITOR: 'true' }
 
 /** Paths go to git on stdin (NUL-separated), which avoids Windows' command-line length limit. */
-function pathspecStdin(paths: string[]): { args: string[]; stdin: string } {
+export function pathspecStdin(paths: string[]): { args: string[]; stdin: string } {
   return { args: ['--pathspec-from-file=-', '--pathspec-file-nul'], stdin: paths.join('\0') }
 }
 
 /** Paths are file names, not patterns: `*.txt` means the file called that, nothing more. */
-const LITERAL_PATHS = { GIT_LITERAL_PATHSPECS: '1' }
+export const LITERAL_PATHS = { GIT_LITERAL_PATHSPECS: '1' }
 
 /** The absolute path of a file inside the repository; throws for anything that would leave it. */
-function insideRepo(repo: string, relPath: string): string {
+export function insideRepo(repo: string, relPath: string): string {
   const absolute = path.resolve(repo, relPath)
   const relative = path.relative(repo, absolute)
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Path is outside the repository')
@@ -118,21 +121,47 @@ export async function getRepoRoot(dir: string): Promise<string> {
 }
 
 export async function status(repo: string): Promise<RepoStatus> {
-  const [{ stdout }, current] = await Promise.all([
+  const [{ stdout }, [current, bisecting]] = await Promise.all([
     runGit(['status', '--porcelain=v2', '--branch', '-z', '--untracked-files=all'], {
       cwd: repo,
       // Background status must not take index.lock or rewrite the index (that would retrigger the watcher).
       env: { GIT_OPTIONAL_LOCKS: '0' }
     }),
-    operation(repo)
+    // One rev-parse finds every state file, for the operation and the bisect alike.
+    stateFiles(repo).then((files) => Promise.all([operation(repo, files), bisectState(repo, files)]))
   ])
   const result = parseStatus(stdout)
-  return current ? { ...result, operation: current } : result
+  return { ...result, ...(current ? { operation: current } : {}), ...(bisecting ? { bisect: bisecting } : {}) }
 }
 
-const OPERATION_FILES = ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD'] as const
+/** The bisect in progress, from its log and refs/bisect/; null when there isn't one. */
+export async function bisectState(repo: string, files?: StateFiles): Promise<BisectState | null> {
+  const where = files ?? (await stateFiles(repo))
+  if ((await readState(where('BISECT_LOG'))) === null) return null
+  const refs = await runGit(['for-each-ref', '--format=%(refname)%00%(objectname)', 'refs/bisect/'], { cwd: repo })
+  const state: BisectState = { bad: null, good: [], skipped: [] }
+  for (const line of refs.stdout.split('\n')) {
+    const [name = '', hash = ''] = line.split('\0')
+    if (name === 'refs/bisect/bad') state.bad = hash
+    else if (name.startsWith('refs/bisect/good-')) state.good.push(hash)
+    else if (name.startsWith('refs/bisect/skip-')) state.skipped.push(hash)
+  }
+  return state
+}
 
-async function readState(file: string): Promise<string | null> {
+const STATE_FILES = ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'BISECT_LOG'] as const
+
+/** Where git keeps one of its state files for a repository (worktrees keep their own). */
+export type StateFiles = (name: (typeof STATE_FILES)[number]) => string
+
+/** The paths of git's state files, found with one `rev-parse --git-path` for all of them. */
+async function stateFiles(repo: string): Promise<StateFiles> {
+  const { stdout } = await runGit(['rev-parse', ...STATE_FILES.flatMap((name) => ['--git-path', name])], { cwd: repo })
+  const lines = stdout.split('\n')
+  return (name) => path.resolve(repo, lines[STATE_FILES.indexOf(name)]?.trim() ?? '')
+}
+
+export async function readState(file: string): Promise<string | null> {
   try {
     return (await fs.readFile(file, 'utf8')).trim()
   } catch {
@@ -141,11 +170,8 @@ async function readState(file: string): Promise<string | null> {
 }
 
 /** The merge, rebase, cherry-pick or revert waiting to be finished, read from git's state files. */
-export async function operation(repo: string): Promise<RepoOperation | null> {
-  const { stdout } = await runGit(['rev-parse', ...OPERATION_FILES.flatMap((name) => ['--git-path', name])], { cwd: repo })
-  const lines = stdout.split('\n')
-  const gitPath = (name: (typeof OPERATION_FILES)[number]): string =>
-    path.resolve(repo, lines[OPERATION_FILES.indexOf(name)]?.trim() ?? '')
+export async function operation(repo: string, files?: StateFiles): Promise<RepoOperation | null> {
+  const gitPath = files ?? (await stateFiles(repo))
 
   // The merge backend keeps its state in rebase-merge/, the older apply backend in rebase-apply/.
   const backends = [
@@ -179,7 +205,7 @@ export async function operation(repo: string): Promise<RepoOperation | null> {
  * Run a command that can stop on conflicts. Stopping there leaves the operation in progress for the
  * user to resolve, so it isn't an error; any other failure is.
  */
-async function untilConflict(repo: string, command: () => Promise<unknown>): Promise<OperationResult> {
+export async function untilConflict(repo: string, command: () => Promise<unknown>): Promise<OperationResult> {
   try {
     await command()
     return { conflicted: false }
@@ -293,13 +319,13 @@ export async function branches(repo: string): Promise<Branch[]> {
   return parseBranches(stdout)
 }
 
-async function parentsOf(repo: string, hash: string): Promise<string[]> {
+export async function parentsOf(repo: string, hash: string): Promise<string[]> {
   const { stdout } = await runGit(['rev-list', '--parents', '-n', '1', hash], { cwd: repo })
   return stdout.trim().split(' ').slice(1)
 }
 
 /** Files changed between two commits, or in a root commit (`['--root', hash]`), with line counts. */
-async function changedFiles(repo: string, range: string[]): Promise<ChangedFile[]> {
+export async function changedFiles(repo: string, range: string[]): Promise<ChangedFile[]> {
   const diffTree = ['diff-tree', '--no-commit-id', '-r', '-z', '-M']
   const [nameStatus, numstat] = await Promise.all([
     runGit([...diffTree, '--name-status', ...range], { cwd: repo }),
@@ -318,11 +344,23 @@ export async function show(repo: string, hash: string): Promise<CommitDetail> {
   const { stdout } = await runGit(['show', '-s', '--decorate=full', `--format=${DETAIL_FORMAT}`, hash], { cwd: repo })
   const parents = await parentsOf(repo, hash)
   // Merges are listed against their first parent.
-  const files = await changedFiles(repo, parents[0] ? [parents[0], hash] : ['--root', hash])
-  return parseCommitDetail(stdout, files)
+  const [files, signature] = await Promise.all([changedFiles(repo, parents[0] ? [parents[0], hash] : ['--root', hash]), commitSignature(repo, hash)])
+  const detail = parseCommitDetail(stdout, files)
+  return signature ? { ...detail, signature } : detail
 }
 
-function truncate(text: string): string {
+/** The commit's signature, checked by gpg (or ssh); null when it isn't signed. */
+async function commitSignature(repo: string, hash: string): Promise<CommitSignature | null> {
+  // Checking runs gpg, which is slow: only do it for commits that carry a signature.
+  const { stdout: raw } = await runGit(['cat-file', 'commit', hash], { cwd: repo })
+  const header = raw.slice(0, raw.indexOf('\n\n'))
+  if (!/^gpgsig(-sha256)? /m.test(header)) return null
+  const { stdout } = await runGit(['show', '-s', '--format=%G?%x1f%GS', hash], { cwd: repo, allowedExitCodes: [0, 1] })
+  const [status = 'E', signer = ''] = stdout.trim().split('\x1f')
+  return { status, signer }
+}
+
+export function truncate(text: string): string {
   return text.length > MAX_DIFF_BYTES ? `${text.slice(0, MAX_DIFF_BYTES)}\n\n… diff truncated …` : text
 }
 
@@ -357,9 +395,19 @@ async function untrackedDiff(repo: string, relPath: string): Promise<string> {
   )
 }
 
-export async function diff(repo: string, target: DiffTarget): Promise<string> {
+/** A file's path, with the name it had before a rename, so git sees both sides of it. */
+export const withOrigPath = (target: { path: string; origPath?: string }): string[] =>
+  target.origPath && target.origPath !== target.path ? [target.origPath, target.path] : [target.path]
+
+export async function diff(repo: string, target: DiffTarget, diffOptions: DiffOptions = {}): Promise<string> {
   // Fixed a/ and b/ prefixes whatever the user's config says, so parts of the diff can be applied back.
-  const common = ['--no-ext-diff', '--no-color', '--src-prefix=a/', '--dst-prefix=b/']
+  const common = [
+    '--no-ext-diff',
+    '--no-color',
+    '--src-prefix=a/',
+    '--dst-prefix=b/',
+    ...(diffOptions.ignoreWhitespace ? ['--ignore-all-space', '--ignore-blank-lines'] : [])
+  ]
   const options = { cwd: repo, maxOutputBytes: 32 * MAX_DIFF_BYTES }
   switch (target.kind) {
     case 'worktree': {
@@ -377,9 +425,15 @@ export async function diff(repo: string, target: DiffTarget): Promise<string> {
       assertHash(target.hash)
       const parents = await parentsOf(repo, target.hash)
       const args = parents[0]
-        ? ['diff', ...common, '-M', parents[0], target.hash, '--', target.path]
+        ? ['diff', ...common, '-M', parents[0], target.hash, '--', ...withOrigPath(target)]
         : ['show', ...common, '--format=', target.hash, '--', target.path]
       const { stdout } = await runGit(args, options)
+      return truncate(stdout)
+    }
+    case 'range': {
+      assertRevision(target.from)
+      assertRevision(target.to)
+      const { stdout } = await runGit(['diff', ...common, '-M', target.from, target.to, '--', ...withOrigPath(target)], options)
       return truncate(stdout)
     }
     case 'stash': {
@@ -573,7 +627,7 @@ export async function showStash(repo: string, hash: string): Promise<CommitDetai
 }
 
 /** Credential overrides for every remote of the repository. */
-async function repoCredentialArgs(repo: string): Promise<string[]> {
+export async function repoCredentialArgs(repo: string): Promise<string[]> {
   const list = await remotes(repo)
   return credentialArgs(list.flatMap((r) => [r.fetchUrl, r.pushUrl]))
 }
@@ -671,7 +725,7 @@ export async function push(repo: string): Promise<PushResult> {
   return { outcome: 'pushed' }
 }
 
-async function configValue(repo: string, key: string): Promise<string | null> {
+export async function configValue(repo: string, key: string): Promise<string | null> {
   const { stdout } = await runGit(['config', '--get', key], { cwd: repo, allowedExitCodes: [0, 1] })
   return stdout.trim() || null
 }

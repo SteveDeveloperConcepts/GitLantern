@@ -20,7 +20,8 @@ export interface ApiAccount {
 
 const TIMEOUT_MS = 20_000
 
-function apiBase(account: ApiAccount): string {
+/** Where the service's API lives, without a trailing slash. */
+export function apiBase(account: ApiAccount): string {
   switch (account.provider) {
     case 'github':
       return account.host === 'github.com' ? 'https://api.github.com' : `https://${account.host}/api/v3`
@@ -55,26 +56,44 @@ function authHeaders(account: ApiAccount, token: string): Record<string, string>
   }
 }
 
-type Json = Record<string, unknown>
+export type Json = Record<string, unknown>
 
 /** The explanation in a service's error response, in whichever shape that service uses. */
 function errorText(body: unknown): string {
   const json = obj(body)
-  const errors = list(json.errors)
-    .map((error) => str(error.message))
+  // GitHub lists some errors as plain strings ("Can not approve your own pull request").
+  const errors = (Array.isArray(json.errors) ? (json.errors as unknown[]) : [])
+    .map((error) => (typeof error === 'string' ? error : str(obj(error).message)))
     .filter(Boolean)
   if (errors.length > 0) return errors.join(' ')
   if (Array.isArray(json.message)) return json.message.filter((m) => typeof m === 'string').join(' ')
   return str(json.message) || str(obj(json.error).message) || str(json.error) || str(json.error_description)
 }
 
-/** Call the service's API: `path` is relative to its API base, or a full https:// address. */
-async function request(account: ApiAccount, token: string, path: string, body?: Json): Promise<unknown> {
+/** A refusal from the service: its HTTP status and its own explanation, for callers that turn some into plainer words. */
+export class ServiceError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly detail: string
+  ) {
+    super(message)
+    this.name = 'ServiceError'
+  }
+}
+
+export type Method = 'GET' | 'POST' | 'PUT' | 'PATCH'
+
+/**
+ * Call the service's API: `path` is relative to its API base, or a full https:// address. Sends
+ * `body` as JSON; the method is POST with a body and GET without, unless given.
+ */
+export async function request(account: ApiAccount, token: string, path: string, body?: Json, method?: Method): Promise<unknown> {
   const url = path.startsWith('https://') ? path : apiBase(account) + path
   let response: Response
   try {
     response = await fetch(url, {
-      method: body ? 'POST' : 'GET',
+      method: method ?? (body ? 'POST' : 'GET'),
       headers: {
         'User-Agent': 'GitLantern',
         ...authHeaders(account, token),
@@ -86,25 +105,34 @@ async function request(account: ApiAccount, token: string, path: string, body?: 
   } catch {
     throw new Error(`Couldn't reach ${new URL(url).host}. Check the server address and your connection.`)
   }
-  if (response.status === 401) throw new Error('The service rejected this token (401). Check it was copied in full and hasn’t expired.')
-  if (response.status === 403) throw new Error('The token works but lacks a permission it needs (403). Recreate it with the scopes listed.')
-  if (response.status === 404) throw new Error('Not found (404). Check the server address or organization.')
   if (!response.ok) {
     const detail = errorText(await response.json().catch(() => null))
-    throw new Error(`The service answered ${response.status} ${response.statusText}.${detail ? ` ${detail}` : ''}`)
+    const fail = (message: string) => new ServiceError(message, response.status, detail)
+    if (response.status === 401) throw fail('The service rejected this token (401). Check it was copied in full and hasn’t expired.')
+    if (response.status === 403) throw fail('The token works but lacks a permission it needs (403). Recreate it with the scopes listed.')
+    if (response.status === 404) throw fail('Not found (404). Check the server address or organization.')
+    throw fail(`The service answered ${response.status} ${response.statusText}.${detail ? ` ${detail}` : ''}`)
   }
-  return response.json()
+  // Some calls (approvals, votes) answer with no content at all.
+  const text = await response.text()
+  if (!text.trim()) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    throw new Error(`${new URL(url).host} sent an answer GitLantern couldn’t read. Check the server address.`)
+  }
 }
 
 const getJson = (account: ApiAccount, token: string, path: string): Promise<unknown> => request(account, token, path)
 
-const str = (value: unknown): string => (typeof value === 'string' ? value : '')
-const time = (value: unknown): number | null => {
+/** Reading the services' JSON without trusting its shape: a string, a time, an array of objects, an object. */
+export const str = (value: unknown): string => (typeof value === 'string' ? value : '')
+export const time = (value: unknown): number | null => {
   const parsed = typeof value === 'string' ? Date.parse(value) : NaN
   return Number.isNaN(parsed) ? null : parsed
 }
-const list = (value: unknown): Json[] => (Array.isArray(value) ? (value as Json[]) : [])
-const obj = (value: unknown): Json => (value && typeof value === 'object' ? (value as Json) : {})
+export const list = (value: unknown): Json[] => (Array.isArray(value) ? (value as Json[]) : [])
+export const obj = (value: unknown): Json => (value && typeof value === 'object' ? (value as Json) : {})
 
 /** Check a token against the service and find out who it belongs to. */
 export async function verifyAccount(account: ApiAccount, token: string): Promise<VerifiedAccount> {
@@ -140,7 +168,7 @@ export async function verifyAccount(account: ApiAccount, token: string): Promise
 }
 
 /** Strip `user@` from an HTTPS clone address so git asks (and askpass answers) per host. */
-function withoutUser(url: string): string {
+export function withoutUser(url: string): string {
   return url.replace(/^(https?:\/\/)[^@/]+@/i, '$1')
 }
 
@@ -217,7 +245,7 @@ export async function listRepos(account: ApiAccount, token: string): Promise<Hos
 }
 
 /** Where the API keeps a repository's pull requests, and its web page, for a remote address. */
-interface RepoApi {
+export interface RepoApi {
   base: string
   web: string
 }
@@ -263,7 +291,8 @@ export function repoApi(account: ApiAccount, url: string): RepoApi | null {
 const WIP_TITLE = /^\s*(\[?(wip|draft)\]?:?)\s/i
 const branchName = (ref: string): string => ref.replace(/^refs\/heads\//, '')
 
-function toPullRequest(account: ApiAccount, item: Json, web: string): PullRequest {
+/** A pull request (merge request) from the service's own JSON, in GitLantern's shape. */
+export function toPullRequest(account: ApiAccount, item: Json, web: string): PullRequest {
   switch (account.provider) {
     case 'gitlab':
       return {
@@ -326,7 +355,8 @@ function toPullRequest(account: ApiAccount, item: Json, web: string): PullReques
   }
 }
 
-function repoApiOrThrow(account: ApiAccount, url: string): RepoApi {
+/** Like {@link repoApi}, but explains when the remote address isn't one the service's API knows. */
+export function repoApiOrThrow(account: ApiAccount, url: string): RepoApi {
   const api = repoApi(account, url)
   if (!api) throw new Error(`Can’t tell which repository ${url} is on the service`)
   return api

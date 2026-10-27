@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { ChangedFile, CommitDetail, DiffTarget } from '../../../shared/types'
+import type { ChangedFile, CommitDetail, CommitSignature, DiffTarget, IssueLinkRule } from '../../../shared/types'
 import { errorMessage, formatRelative } from '../format'
 import { Avatar } from './Avatar'
 import { FileList } from './FileList'
+import { LinkedText } from './LinkedText'
 
 const api = window.api
 
@@ -14,13 +15,40 @@ interface Props {
   /** File whose diff is open, to highlight it. */
   openPath: string | null
   onOpenDiff(target: DiffTarget): void
+  /** Rules that turn issue numbers in the message into links. */
+  linkRules?: IssueLinkRule[]
+  /** Right-click on a changed file. */
+  onFileMenu?(path: string, hash: string, position: { x: number; y: number }): void
+  /** Click on a parent's hash. */
+  onShowCommit?(hash: string): void
 }
 
 function diffTarget(hash: string, file: ChangedFile, stash: boolean): DiffTarget {
-  return stash ? { kind: 'stash', hash, path: file.path, untracked: file.untracked === true } : { kind: 'commit', hash, path: file.path }
+  if (stash) return { kind: 'stash', hash, path: file.path, untracked: file.untracked === true }
+  return { kind: 'commit', hash, path: file.path, ...(file.origPath ? { origPath: file.origPath } : {}) }
 }
 
-export function CommitDetails({ repoPath, hash, stash = false, openPath, onOpenDiff }: Props) {
+const SIGNATURES: Record<string, { label: string; tone: string; text: string }> = {
+  G: { label: 'Signed', tone: 'chip-ok', text: 'A good signature' },
+  U: { label: 'Signed', tone: 'chip-ok', text: 'A good signature from a key you haven’t marked as trusted' },
+  X: { label: 'Signed', tone: 'chip-warn', text: 'A good signature that has expired' },
+  Y: { label: 'Signed', tone: 'chip-warn', text: 'A good signature from a key that has expired' },
+  R: { label: 'Signed', tone: 'chip-warn', text: 'A good signature from a key that was revoked' },
+  B: { label: 'Bad signature', tone: 'chip-danger', text: 'The signature doesn’t match: the commit may have been tampered with' },
+  E: { label: 'Signed', tone: '', text: 'Signed, but it couldn’t be checked here (the key or gpg is missing)' }
+}
+
+function SignatureChip({ signature }: { signature: CommitSignature }) {
+  const info = SIGNATURES[signature.status] ?? SIGNATURES.E
+  return (
+    <span className={`chip ${info?.tone ?? ''}`} title={`${info?.text ?? ''}${signature.signer ? `\n${signature.signer}` : ''}`}>
+      {info?.label ?? 'Signed'}
+      {signature.signer ? ` · ${signature.signer.replace(/\s*<.*>$/, '')}` : ''}
+    </span>
+  )
+}
+
+export function CommitDetails({ repoPath, hash, stash = false, openPath, onOpenDiff, linkRules = [], onFileMenu, onShowCommit }: Props) {
   const [detail, setDetail] = useState<CommitDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
   // Kept in a ref so a new callback identity doesn't reload the commit.
@@ -58,13 +86,19 @@ export function CommitDetails({ repoPath, hash, stash = false, openPath, onOpenD
       <div className="commit-heading">
         <Avatar name={detail.authorName} email={detail.authorEmail} size={34} />
         <div className="commit-heading-text">
-          <p className="commit-summary">{detail.subject}</p>
+          <p className="commit-summary selectable">
+            <LinkedText text={detail.subject} rules={linkRules} />
+          </p>
           <p className="dim" title={`${detail.authorEmail} · ${new Date(detail.authorDate * 1000).toLocaleString()}`}>
             {detail.authorName} · {formatRelative(detail.authorDate)}
           </p>
         </div>
       </div>
-      {detail.body && <pre className="commit-body">{detail.body}</pre>}
+      {detail.body && (
+        <pre className="commit-body selectable">
+          <LinkedText text={detail.body} rules={linkRules} />
+        </pre>
+      )}
       <div className="chips">
         <button className="chip mono" title="Copy full hash" onClick={() => void api.clipboard.write(detail.hash)}>
           {detail.hash.slice(0, 7)}
@@ -74,10 +108,23 @@ export function CommitDetails({ repoPath, hash, stash = false, openPath, onOpenD
         ) : (
           detail.parents.length > 0 && (
             <span className="chip">
-              Parent{detail.parents.length > 1 ? 's' : ''} {detail.parents.map((p) => p.slice(0, 7)).join(' · ')}
+              Parent{detail.parents.length > 1 ? 's' : ''}{' '}
+              {detail.parents.map((p, index) => (
+                <span key={p}>
+                  {index > 0 && ' · '}
+                  {onShowCommit ? (
+                    <button className="link mono inline" onClick={() => onShowCommit(p)}>
+                      {p.slice(0, 7)}
+                    </button>
+                  ) : (
+                    p.slice(0, 7)
+                  )}
+                </span>
+              ))}
             </span>
           )
         )}
+        {detail.signature && <SignatureChip signature={detail.signature} />}
         {tags.map((tag) => (
           <span key={tag.name} className="chip chip-ok">
             # {tag.name}
@@ -98,6 +145,7 @@ export function CommitDetails({ repoPath, hash, stash = false, openPath, onOpenD
           deletions: file.deletions ?? null
         }))}
         selectedKey={openPath}
+        {...(onFileMenu && !stash ? { onContextMenu: (item, position) => onFileMenu(item.path, detail.hash, position) } : {})}
         onOpen={(item) => {
           const file = detail.files.find((f) => f.path === item.path)
           if (file) onOpenDiff(diffTarget(detail.hash, file, stash))

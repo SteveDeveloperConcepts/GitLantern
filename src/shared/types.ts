@@ -32,6 +32,27 @@ export interface RepoStatus {
   entries: StatusEntry[]
   /** A merge, rebase, cherry-pick or revert that stopped (usually on conflicts) and waits to be finished. */
   operation?: RepoOperation
+  /** A bisect in progress (`git bisect start` until `git bisect reset`). */
+  bisect?: BisectState
+}
+
+/** Where a bisect has got to, read from refs/bisect/. */
+export interface BisectState {
+  /** The commit marked bad, once there is one. */
+  bad: string | null
+  /** Commits marked good. */
+  good: string[]
+  /** Commits skipped. */
+  skipped: string[]
+}
+
+/** What a bisect step found. `done`: git named the first bad commit. */
+export interface BisectStep {
+  done: boolean
+  /** The first bad commit, when `done`. */
+  firstBad?: string
+  /** git's own summary line, e.g. "Bisecting: 3 revisions left to test after this (roughly 2 steps)". */
+  message: string
 }
 
 export interface RepoOperation {
@@ -155,6 +176,8 @@ export interface ChangedFile {
 export interface CommitDetail extends Commit {
   body: string
   files: ChangedFile[]
+  /** Set when the commit is signed. */
+  signature?: CommitSignature
 }
 
 export interface Branch {
@@ -230,6 +253,59 @@ export interface PullRequestList {
   defaultBranch: string | null
 }
 
+/**
+ * A pull request opened for review: its description, and the two commits its diff is between. Both
+ * were fetched into the repository, so the diff and its files come from git.
+ */
+export interface PullRequestDetail extends PullRequest {
+  body: string
+  state: 'open' | 'closed' | 'merged'
+  /** Where the pull request's changes start: the merge base of the target branch and `head`. */
+  base: string
+  /** The pull request's newest commit. */
+  head: string
+  /** The connected account's login, to tell your own comments apart. */
+  viewer: string
+}
+
+/** What a review says overall. */
+export type ReviewVerdict = 'comment' | 'approve' | 'request-changes'
+
+/** A comment already on the pull request: on a line of a file, or on the pull request as a whole. */
+export interface ReviewComment {
+  id: string
+  author: string
+  body: string
+  /** Unix milliseconds. */
+  createdAt: number | null
+  /** The file it's on, or null for a comment on the whole pull request (or a review's summary). */
+  path: string | null
+  /** The line it's on, in the new file (side 'new') or the old one ('old'); null when it isn't on a line. */
+  line: number | null
+  side: 'old' | 'new'
+  /** A review's summary carries its verdict. */
+  verdict?: ReviewVerdict
+  /** The line has changed since: the comment was made on an older version. */
+  outdated?: boolean
+  /** The comment it answers, in a thread. */
+  inReplyTo?: string
+}
+
+/** A comment written during a review, sent when the review is submitted. */
+export interface DraftComment {
+  path: string
+  line: number
+  side: 'old' | 'new'
+  body: string
+}
+
+export interface SubmitReview {
+  verdict: ReviewVerdict
+  /** The review's summary; may be empty for an approval. */
+  body: string
+  comments: DraftComment[]
+}
+
 export interface NewPullRequest {
   title: string
   description: string
@@ -294,9 +370,331 @@ export type DiffTarget =
   /** `conflicted`: show the file itself with its conflict markers instead of a diff. */
   | { kind: 'worktree'; path: string; untracked?: boolean; conflicted?: boolean }
   | { kind: 'index'; path: string }
-  | { kind: 'commit'; hash: string; path: string }
+  /** `origPath`: the file's name before the commit renamed it, so the diff shows a rename. */
+  | { kind: 'commit'; hash: string; path: string; origPath?: string }
   /** `untracked`: a file the stash saved from outside git's tracking. */
   | { kind: 'stash'; hash: string; path: string; untracked?: boolean }
+  /** One file between any two commits or branches (`git diff from to`). */
+  | { kind: 'range'; from: string; to: string; path: string; origPath?: string }
+
+/** How a diff is produced. Ignoring whitespace turns off line staging: the patch wouldn't apply. */
+export interface DiffOptions {
+  ignoreWhitespace?: boolean
+}
+
+/** Both versions of an image a diff is about, as data URLs; null where the file doesn't exist on that side. */
+export interface ImagePair {
+  before: string | null
+  after: string | null
+  /** Bytes on each side, null where the file doesn't exist. */
+  beforeSize: number | null
+  afterSize: number | null
+}
+
+/** One step of an interactive rebase, oldest commit first. */
+export interface RebaseStep {
+  hash: string
+  /** `reword`: keep the changes and replace the message. `squash` / `fixup`: fold into the commit before it, keeping or dropping this message. */
+  action: 'pick' | 'reword' | 'edit' | 'squash' | 'fixup' | 'drop'
+  /** The new message for `reword`, or for the combined commit a `squash` makes. */
+  message?: string
+}
+
+/** A commit an interactive rebase can change, with its whole message. */
+export interface RebaseCommit {
+  hash: string
+  subject: string
+  /** The full message: subject, blank line, body. */
+  message: string
+  authorName: string
+  authorDate: number
+  /** Merge commits can't be rebased interactively here; the dialog refuses ranges that contain one. */
+  isMerge: boolean
+}
+
+export type ResetMode = 'soft' | 'mixed' | 'hard'
+
+export interface Tag {
+  name: string
+  /** The commit it points at (peeled for annotated tags). */
+  hash: string
+  annotated: boolean
+  /** Annotated tags: the tag message's first line. */
+  message: string
+  /** Unix seconds: when an annotated tag was made, or the commit's date for a lightweight one. */
+  date: number
+  tagger: string
+}
+
+export interface NewTag {
+  name: string
+  /** Commit or branch to tag. */
+  target: string
+  /** A message makes an annotated tag; without one it's lightweight. */
+  message?: string
+  /** Sign with GPG (`git tag -s`); needs a message. */
+  sign?: boolean
+}
+
+/** Result of deleting a local branch: `not-merged` means git refused and a forced delete would lose commits. */
+export type DeleteBranchResult = 'deleted' | 'not-merged'
+
+/** One line of `git blame`. */
+export interface BlameLine {
+  /** Line number in the file as it is at the blamed revision, from 1. */
+  number: number
+  text: string
+  hash: string
+}
+
+/** The commits blame lines point at. */
+export interface BlameCommit {
+  hash: string
+  authorName: string
+  authorEmail: string
+  authorDate: number
+  summary: string
+  /** Not committed yet (git's all-zero hash). */
+  uncommitted: boolean
+}
+
+export interface BlameResult {
+  lines: BlameLine[]
+  commits: Record<string, BlameCommit>
+  /** The file is binary; no lines. */
+  binary: boolean
+}
+
+/** A commit in a file's history (followed across renames). */
+export interface FileHistoryEntry {
+  commit: Commit
+  /** A, M, D, R, C or T for this file in this commit. */
+  status: string
+  /** The file's path in this commit. */
+  path: string
+  /** For a rename: the path it had before. */
+  origPath?: string
+}
+
+export interface Submodule {
+  /** Path inside the repository. */
+  path: string
+  url: string
+  /** The commit the parent repository records for it. */
+  hash: string
+  /** `uninitialized`: not cloned yet. `modified`: checked out at a different commit than recorded. */
+  state: 'ok' | 'uninitialized' | 'modified' | 'conflict'
+}
+
+export interface Worktree {
+  /** Absolute path. */
+  path: string
+  /** Checked-out commit, or null for a bare repository. */
+  head: string | null
+  /** Checked-out branch, or null when detached. */
+  branch: string | null
+  /** The repository's main working tree (the one the others were made from). */
+  isMain: boolean
+  /** The worktree this window has open. */
+  isCurrent: boolean
+  locked: boolean
+  /** Its folder is gone; `prune` removes the record. */
+  prunable: boolean
+}
+
+export type NewWorktree =
+  /** Check out an existing local branch there. */
+  | { path: string; branch: string }
+  /** Make a new branch there, from `startPoint` (or HEAD). */
+  | { path: string; newBranch: string; startPoint?: string }
+
+export interface LfsFile {
+  path: string
+  /** Short object ID. */
+  oid: string
+  /** False when only the pointer is checked out. */
+  downloaded: boolean
+}
+
+export interface LfsLock {
+  id: string
+  path: string
+  owner: string
+  /** Unix seconds. */
+  lockedAt: number
+}
+
+export interface LfsInfo {
+  /** `git lfs` is installed. */
+  installed: boolean
+  version: string | null
+  /** Patterns in .gitattributes with filter=lfs. */
+  patterns: string[]
+  files: LfsFile[]
+}
+
+export type FlowKind = 'feature' | 'release' | 'hotfix'
+
+/** git-flow settings, in the same config keys the git-flow tools use (gitflow.branch.*, gitflow.prefix.*). */
+export interface FlowConfig {
+  master: string
+  develop: string
+  prefixes: Record<FlowKind, string>
+  /** Put before the version in release and hotfix tags, e.g. "v". */
+  versionTagPrefix: string
+}
+
+export interface FinishFlowOptions {
+  /** Release and hotfix: the tag's message (the tag is named after the version). */
+  tagMessage?: string
+  /** Keep the branch after finishing. */
+  keepBranch?: boolean
+}
+
+/** One git command GitLantern ran, for the command log. */
+export interface CommandLogEntry {
+  id: number
+  /** Arguments after `git`. */
+  args: string[]
+  cwd: string
+  /** Unix milliseconds. */
+  startedAt: number
+  /** Milliseconds; null while it's still running. */
+  duration: number | null
+  /** null while running, or when git couldn't be started. */
+  exitCode: number | null
+  /** The first part of stderr when it failed. */
+  error?: string
+}
+
+/** An editor, terminal or file manager GitLantern found on this computer. */
+export interface ExternalTool {
+  id: string
+  name: string
+}
+
+export interface ExternalTools {
+  editors: ExternalTool[]
+  terminals: ExternalTool[]
+}
+
+/** Where a custom action shows up, and what it's given. */
+export type CustomActionScope = 'repository' | 'commit' | 'branch' | 'file'
+
+/**
+ * A command the user set up in Settings. Placeholders in `args`: ${REPO} (the repository folder),
+ * ${SHA} (commit), ${BRANCH}, ${FILE} (path inside the repository).
+ */
+export interface CustomAction {
+  id: string
+  name: string
+  scope: CustomActionScope
+  /** The program to run. */
+  command: string
+  /** Its arguments, one per line in the settings form. */
+  args: string[]
+  /** Ask before running it. */
+  confirm: boolean
+}
+
+export interface CustomActionContext {
+  sha?: string
+  branch?: string
+  file?: string
+}
+
+export interface CustomActionResult {
+  exitCode: number | null
+  output: string
+}
+
+/** Turns text in commit messages into links, e.g. `#(\d+)` → `https://github.com/o/r/issues/$1`. */
+export interface IssueLinkRule {
+  id: string
+  name: string
+  /** A regular expression; $1, $2… in `url` stand for its groups. */
+  pattern: string
+  url: string
+  /** Only for repositories whose `origin` contains this text; empty for every repository. */
+  remoteContains: string
+}
+
+export interface CommitTemplate {
+  id: string
+  name: string
+  text: string
+}
+
+/** A named set of repositories that open together as tabs. */
+export interface Workspace {
+  id: string
+  name: string
+  repos: string[]
+}
+
+export type ThemeMode = 'system' | 'light' | 'dark'
+
+export type AiProvider = 'anthropic' | 'openai'
+
+export interface AiSettings {
+  provider: AiProvider
+  /** OpenAI-compatible only: the API's base URL, e.g. https://api.openai.com/v1 or http://localhost:11434/v1 for Ollama. */
+  endpoint: string
+  model: string
+  /** Extra instructions added to the prompt, e.g. "Use Conventional Commits". */
+  instructions: string
+}
+
+/** Everything the Settings screen edits. Stored in settings.json; the AI key goes in the SecretStore. */
+export interface UserSettings {
+  theme: ThemeMode
+  /** Accent colour (#rrggbb), or empty for the theme's own. */
+  accent: string
+  /** Overrides for the theme's CSS variables, e.g. { "--bg": "#101010" }. */
+  colors: Record<string, string>
+  /** Interface size in percent (80–150). */
+  zoom: number
+  /** Fetch every remote this often while a repository is open; 0 turns it off. */
+  autoFetchMinutes: number
+  /** Explicit git executable, used after a restart. Read-only here: `settings.chooseGit` sets it. */
+  gitPath: string
+  /** Editor and terminal ids from `tools.list()`, or empty for the first one found. */
+  editor: string
+  terminal: string
+  /** Passed to `git difftool --tool=` / `git mergetool --tool=`; empty uses git's own config. */
+  diffTool: string
+  mergeTool: string
+  customActions: CustomAction[]
+  issueLinks: IssueLinkRule[]
+  commitTemplates: CommitTemplate[]
+  /** Show the Conventional Commits helper above the commit message. */
+  conventionalCommits: boolean
+  ai: AiSettings
+  workspaces: Workspace[]
+  /** Repositories open as tabs, restored on the next start. */
+  openTabs: string[]
+  activeTab: string | null
+}
+
+/** Git settings the Settings screen and the commit form change, for one repository or globally. */
+export interface GitIdentity {
+  userName: string
+  userEmail: string
+  /** commit.gpgsign */
+  signCommits: boolean
+  /** tag.gpgsign */
+  signTags: boolean
+  /** The file commit.template points at, read in; empty when there's none. */
+  commitTemplate: string
+}
+
+export type GitConfigKey = 'user.name' | 'user.email' | 'commit.gpgsign' | 'tag.gpgsign'
+
+/** A signature on a commit, from `%G?`: G good, B bad, U good but untrusted, N none, E can't check… */
+export interface CommitSignature {
+  status: string
+  signer: string
+}
 
 export interface AskPassRequest {
   id: string
@@ -342,6 +740,14 @@ export interface GitLanternApi {
     /** Clone `url` into a new folder inside `parentFolder` and open it. */
     clone(url: string, parentFolder: string): Promise<RepoInfo>
     onCloneProgress(callback: (progress: CloneProgress) => void): () => void
+    /** Open a submodule or worktree of an open repository: a path inside it, or one of its worktrees. */
+    openRelated(repo: string, path: string): Promise<RepoInfo>
+    /** Open a repository from a workspace or a restored tab: one opened before. */
+    openKnown(paths: string[]): Promise<RepoInfo[]>
+    /** Stop watching a repository whose tab was closed. */
+    close(repo: string): Promise<void>
+    /** Pick a folder for a new worktree or an archive. */
+    pickSaveFolder(title: string): Promise<string | null>
   }
   remotes: {
     list(repo: string): Promise<RemoteInfo[]>
@@ -370,6 +776,12 @@ export interface GitLanternApi {
     create(repo: string, input: NewPullRequest): Promise<PullRequest>
     /** Check out a pull request's branch; returns the local branch's name. */
     checkout(repo: string, number: number): Promise<string>
+    /** Open a pull request for review: fetch its commits and read its description. */
+    detail(repo: string, number: number): Promise<PullRequestDetail>
+    /** Comments and reviews already on it, oldest first. */
+    comments(repo: string, number: number): Promise<ReviewComment[]>
+    /** Send a review: its verdict, summary and line comments. `head` is the commit the comments were written against. */
+    submitReview(repo: string, number: number, head: string, review: SubmitReview): Promise<void>
   }
   ssh: {
     key(): Promise<SshKeyInfo | null>
@@ -424,6 +836,130 @@ export interface GitLanternApi {
     dropStash(repo: string, hash: string): Promise<void>
     /** A stash's changes, like a commit's. */
     showStash(repo: string, hash: string): Promise<CommitDetail>
+
+    /** Diff with options (whitespace). `diff` is the same with none. */
+    diffWith(repo: string, target: DiffTarget, options: DiffOptions): Promise<string>
+    /** Both sides of an image file for the image diff. */
+    imagePair(repo: string, target: DiffTarget): Promise<ImagePair>
+    /** Files changed between two commits or branches. */
+    compareFiles(repo: string, from: string, to: string): Promise<ChangedFile[]>
+    blame(repo: string, path: string, revision?: string): Promise<BlameResult>
+    /** Commits that changed a file, newest first, followed across renames. */
+    fileHistory(repo: string, path: string): Promise<FileHistoryEntry[]>
+
+    /** Add the staged changes to the last commit, and replace its message when `message` isn't null. */
+    amend(repo: string, message: string | null): Promise<void>
+    /** The last commit's whole message, for amending. */
+    headMessage(repo: string): Promise<string>
+    /** Replace a commit's message: HEAD is amended, an older commit is reworded by a rebase. */
+    reword(repo: string, hash: string, message: string): Promise<OperationResult>
+    /** Make a new commit that undoes one. */
+    revert(repo: string, hash: string): Promise<OperationResult>
+    /** Move the current branch to a commit. */
+    reset(repo: string, hash: string, mode: ResetMode): Promise<void>
+    /** Commits after `base` on the current branch, oldest first; `base` null for the whole branch. */
+    rebaseCommits(repo: string, base: string | null): Promise<RebaseCommit[]>
+    /** Rewrite the commits after `base` as `steps` says (in that order). */
+    interactiveRebase(repo: string, base: string | null, steps: RebaseStep[]): Promise<OperationResult>
+
+    deleteBranch(repo: string, name: string, force: boolean): Promise<DeleteBranchResult>
+    /** Delete a branch on its remote: `origin/feature`. */
+    deleteRemoteBranch(repo: string, remoteBranch: string): Promise<void>
+    renameBranch(repo: string, name: string, newName: string): Promise<void>
+    /** Link a local branch to a remote branch (`origin/main`), or unlink it with null. */
+    setUpstream(repo: string, name: string, upstream: string | null): Promise<void>
+    /** Push a local branch that isn't checked out, setting its upstream the first time. */
+    pushBranch(repo: string, name: string, remote: string): Promise<void>
+
+    tags(repo: string): Promise<Tag[]>
+    createTag(repo: string, tag: NewTag): Promise<void>
+    deleteTag(repo: string, name: string): Promise<void>
+    pushTag(repo: string, name: string, remote: string): Promise<void>
+    deleteRemoteTag(repo: string, name: string, remote: string): Promise<void>
+
+    submodules(repo: string): Promise<Submodule[]>
+    /** `git submodule update --init --recursive`, for these paths or all of them. */
+    updateSubmodules(repo: string, paths: string[]): Promise<void>
+    addSubmodule(repo: string, url: string, path: string): Promise<void>
+    removeSubmodule(repo: string, path: string): Promise<void>
+
+    worktrees(repo: string): Promise<Worktree[]>
+    addWorktree(repo: string, worktree: NewWorktree): Promise<void>
+    removeWorktree(repo: string, path: string, force: boolean): Promise<void>
+    pruneWorktrees(repo: string): Promise<void>
+    lockWorktree(repo: string, path: string, locked: boolean): Promise<void>
+
+    lfs(repo: string): Promise<LfsInfo>
+    lfsInstall(repo: string): Promise<void>
+    lfsTrack(repo: string, pattern: string): Promise<void>
+    lfsUntrack(repo: string, pattern: string): Promise<void>
+    lfsPull(repo: string): Promise<void>
+    lfsPush(repo: string): Promise<void>
+    lfsLocks(repo: string): Promise<LfsLock[]>
+    lfsLock(repo: string, path: string): Promise<void>
+    lfsUnlock(repo: string, path: string, force: boolean): Promise<void>
+
+    /** git-flow settings, or null when the repository hasn't been set up for it. */
+    flowConfig(repo: string): Promise<FlowConfig | null>
+    flowInit(repo: string, config: FlowConfig): Promise<void>
+    /** Make the branch (feature/x from develop, hotfix/x from master…) and switch to it. */
+    flowStart(repo: string, kind: FlowKind, name: string): Promise<void>
+    /** Merge it where git-flow says (and tag releases and hotfixes); stops on conflicts. Run again after resolving them. */
+    flowFinish(repo: string, kind: FlowKind, name: string, options: FinishFlowOptions): Promise<OperationResult>
+
+    bisectStart(repo: string, bad: string, good: string): Promise<BisectStep>
+    bisectMark(repo: string, verdict: 'good' | 'bad' | 'skip'): Promise<BisectStep>
+    bisectReset(repo: string): Promise<void>
+
+    /** Save a commit as a zip of its files; asks where. Returns the saved file, or null when cancelled. */
+    archive(repo: string, revision: string): Promise<string | null>
+    /** Save commits (oldest first) as a patch file, or the uncommitted changes when `hashes` is empty. */
+    savePatch(repo: string, hashes: string[]): Promise<string | null>
+    /** Pick a .patch file and apply it: `git am` for mailbox patches, `git apply --3way` otherwise. */
+    applyPatchFile(repo: string): Promise<OperationResult | null>
+    /** Untracked files `clean` would remove; with `ignored`, ignored files too. */
+    cleanPreview(repo: string, ignored: boolean): Promise<string[]>
+    /** Move these untracked (or ignored) files and folders to the trash. */
+    clean(repo: string, paths: string[]): Promise<void>
+    /** Add a pattern to .gitignore, or to .git/info/exclude for this copy only. */
+    ignore(repo: string, pattern: string, where: 'gitignore' | 'exclude'): Promise<void>
+
+    identity(repo: string): Promise<{ local: Partial<GitIdentity>; global: GitIdentity }>
+    setConfig(repo: string | null, key: GitConfigKey, value: string | null): Promise<void>
+  }
+  settings: {
+    get(): Promise<UserSettings>
+    /** Save some settings; returns all of them. */
+    set(patch: Partial<UserSettings>): Promise<UserSettings>
+    onChanged(callback: (settings: UserSettings) => void): () => void
+    /** Where the saved AI API key may be sent (e.g. https://api.anthropic.com), or null when none is saved. */
+    aiKeyOrigin(): Promise<string | null>
+    /** Save the key for the AI service set now, or remove it with null. */
+    setAiKey(key: string | null): Promise<void>
+    /** Pick the git program in a file dialog (or go back to the one on PATH with `reset`); used from the next start. */
+    chooseGit(reset: boolean): Promise<UserSettings>
+  }
+  tools: {
+    /** Editors and terminals found on this computer. */
+    list(): Promise<ExternalTools>
+    openInEditor(repo: string, file?: string): Promise<void>
+    openTerminal(repo: string): Promise<void>
+    /** Show the repository, or a file in it, in Explorer / Finder. */
+    showInFolder(repo: string, file?: string): Promise<void>
+    /** `git difftool` on one file of a diff. */
+    diffTool(repo: string, target: DiffTarget): Promise<void>
+    /** `git mergetool` on a conflicted file. */
+    mergeTool(repo: string, path: string): Promise<void>
+    runCustomAction(repo: string, actionId: string, context: CustomActionContext): Promise<CustomActionResult>
+    openUrl(url: string): Promise<void>
+  }
+  ai: {
+    /** Write a commit message for the staged changes. */
+    commitMessage(repo: string): Promise<string>
+  }
+  commandLog: {
+    list(): Promise<CommandLogEntry[]>
+    clear(): Promise<void>
   }
   askpass: {
     onRequest(callback: (request: AskPassRequest) => void): () => void

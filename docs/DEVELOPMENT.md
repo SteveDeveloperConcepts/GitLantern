@@ -16,7 +16,8 @@ The first `yarn dev` downloads the Electron binary.
 | `yarn start` | Run the production build |
 | `yarn typecheck` | Type-check the main process and the renderer |
 | `yarn test` | Unit and integration tests. The askpass round trip needs `yarn build` first. |
-| `yarn dist:win` / `dist:mac` | Installers via electron-builder (NSIS / DMG) into `dist/`. Build the macOS one on a Mac. |
+| `yarn dist:win` / `dist:mac` / `dist:linux` | Installers via electron-builder (NSIS / DMG / AppImage and .deb) into `dist/`. Build each on its own system. |
+| `yarn screenshots` | Fresh `docs/screenshots/` from demo repositories (run `yarn build` first; see below) |
 | `yarn dist:msstore` / `dist:msstore-test` | Microsoft Store packages (AppX), or an unsigned one to install locally |
 | `yarn dist:mas` / `dist:mas-dev` | Mac App Store package, or a development-signed sandboxed app |
 | `yarn release <version> "<what changed>" …` | Raise the version, tag and push: the Release workflow publishes it on GitHub |
@@ -31,14 +32,28 @@ src/
     index.ts            window, single-instance lock, startup wiring (and settings.json carried over
                         from the "Git Steve" data folder, the app's old name)
     ipc.ts              IPC handlers: validate renderer input, only touch repos the user opened
-    git/runGit.ts       spawn wrapper: env, exit codes, output limits, GitError
+    git/runGit.ts       spawn wrapper: env, exit codes, output limits, GitError; runGitRaw for bytes
     git/commands.ts     typed git operations (status, log, diff, stage, commit, fetch/pull/push, ...)
+                        and the validation helpers the other git modules share
+    git/history.ts      amend, reword, revert, reset, interactive rebase
+    git/refs.ts         branch rename/delete/upstream/push, tags
+    git/inspect.ts      blame, file history, comparing commits, both sides of an image
+    git/structure.ts    submodules, worktrees, Git LFS
+    git/flow.ts         git-flow without the git-flow tools (same config keys)
+    git/bisect.ts       bisect start, good/bad/skip, reset
+    git/files.ts        archive, patches, clean, .gitignore, git config (identity, signing)
     git/parsers.ts      pure parsers for porcelain v2 status, log, for-each-ref, name-status
+    commandLog.ts       the last 500 git commands, for the command log
+    settings.ts         settings.json: recent repos, and the Settings screen's values (checked by sanitizeSettings)
+    tools.ts            finding and starting editors and terminals, difftool/mergetool, custom actions
+    ai.ts               commit messages from the staged diff (Anthropic or OpenAI-compatible APIs)
     askpass/            credential prompts: socket server, trampoline script, prompt parsing, glue to the UI
     accounts/store.ts   connected Git services: metadata in accounts.json, tokens in the SecretStore
     accounts/providerApi.ts  token checks, repository and pull request listing, new pull requests, per service
+    accounts/reviewApi.ts    pull request details, comments and submitting reviews, per service
     accounts/oauth.ts   browser sign-in: GitHub's device flow, PKCE with a 127.0.0.1 redirect, token refresh
-    pullRequests.ts     which remote and account a repository's pull requests come from; checking one out
+    pullRequests.ts     which remote and account a repository's pull requests come from; checking one out;
+                        fetching one for review
     ssh.ts              find / create / convert the user's SSH key, `ssh -T` connection tests
     secrets.ts          safeStorage-encrypted store (Keychain / DPAPI); no plaintext fallback
     watcher.ts          recursive fs.watch → "worktree" or "refs" change events
@@ -49,7 +64,14 @@ src/
                         remote-address parsing/conversion (remoteUrl.ts), resolving conflict markers
                         (conflicts.ts) and partial patches for line staging (patch.ts), shared by every process
   renderer/             React UI
-    src/branchMenus.ts       right-click menu contents for branches and commits (pure, unit-tested)
+    src/App.tsx              the window: tabs, workspaces, settings and the dialogs shared by every tab
+    src/RepoView.tsx         one repository's tab: top bar, panels, graph, details and its dialogs
+    src/branchMenus.ts       right-click menu contents for branches, commits and tags (pure, unit-tested)
+    src/splitDiff.ts         pairing lines for the side-by-side diff (pure, unit-tested)
+    src/issueLinks.ts        issue numbers in messages → links (pure, unit-tested)
+    src/review.ts            which diff line a review comment belongs on (pure, unit-tested)
+    src/conventional.ts      Conventional Commits messages (pure, unit-tested)
+    src/theme.ts             applying the theme, accent, colours and size from Settings
     src/graph/layout.ts      lane-assignment algorithm for the commit graph (pure, unit-tested)
     src/graph/branches.ts    which branch each commit belongs to, from refs and merge messages (pure, unit-tested)
     src/graph/search.ts      history search matching, and re-linking a filtered list for the graph (pure, unit-tested)
@@ -58,7 +80,7 @@ test/                   integration tests against real temporary repositories
 resources/askpass.cmd   askpass trampoline shipped with packaged Windows builds
 build/                  app icon, Store tile images (appx/), Mac App Store entitlements, and
                         adhoc-mac.yml (Mac builds without a certificate)
-scripts/                `yarn release`, store-build preflight check, icon generator
+scripts/                `yarn release`, store-build preflight check, icon generator, `yarn screenshots`
 .github/workflows/      release.yml: a pushed v* tag builds the installers and publishes a GitHub release
 ```
 
@@ -171,6 +193,67 @@ answers `Username for '…'` / `Password for '…'` with the account's git usern
 token never reaches the renderer. Tests mock `fetch` for the provider APIs, so no real tokens are
 needed.
 
+**Rewriting history.** `history.ts` writes the whole interactive-rebase todo itself and runs `git rebase
+-i` with `GIT_SEQUENCE_EDITOR` set to `cp '<todo>'` (git runs editors through its own `sh`, Git for
+Windows included) and `GIT_EDITOR=true`, so squashes take git's combined message. A reworded commit, or a
+squash given a new message, gets an `exec git commit --amend --only --file=<message>` line after its
+group. The todo and message files live in the git dir (`gitlantern-rebase/`), not a temp folder, because
+exec lines can run after a stop on conflicts or an `edit`. Ranges with merges are refused rather than
+flattened. Rewording HEAD is `commit --amend --only`, which leaves staged changes out.
+
+**Tabs.** `App.tsx` keeps one `RepoView` per open repository mounted (hidden ones keep their selection,
+filters and scroll) and the main process one watcher per repository; closing a tab stops its watcher. The
+tabs and the active one are saved in settings.json and reopened through `repo:open-known`, which only
+accepts folders opened before: Recent shows the last 12, and `knownRepos` (written by the main process
+only) keeps every one, so tabs and workspaces beyond those still reopen. Submodules and worktrees open
+through `repo:open-related`, which accepts only a submodule or worktree git lists for the repository,
+and only when git finds that folder itself to be the repository's root. Shortcuts like Ctrl+F check
+they're in the visible tab.
+
+**Settings.** The Settings screen writes through `settings:set`, and `sanitizeSettings` checks every field
+on its own (colours are `#rrggbb`, CSS variable names are `--name`, tool names are plain words, issue-link
+patterns must compile). Because the renderer can write settings, nothing it writes decides which program
+runs or where a secret goes:
+- `gitPath` isn't accepted from `settings:set`; Settings → Git picks it with the main process's own file
+  dialog (`settings:choose-git`), and it must be named git.
+- The AI key goes in the SecretStore with the origin it was saved for (Anthropic's API, or the
+  OpenAI-compatible server's), and is only ever sent there: changing the provider or address needs a key
+  saved for the new one.
+- A custom action's program is resolved first: a bare name like `git` from absolute PATH entries only
+  (a plain spawn on Windows would look in the repository first, so a cloned repository could ship a
+  git.exe), a path with a folder in it from the repository on purpose. The resolved program and its
+  arguments are confirmed by a main-process dialog the first time they run, and the approval (a hash)
+  is stored outside the renderer's reach (`approvedActions`).
+
+Custom actions, editors and terminals are started without a shell. Interface size is Chromium's zoom
+factor, set by the main process, so pointer positions and the graph's canvas stay in step.
+
+**Command log.** `runGit` tells a listener when each command starts and ends; `commandLog.ts` keeps the
+last 500 (arguments, folder, duration, exit code, the start of stderr on failure), which the log dialog
+reads every second while it's open. Nothing sent on stdin is kept. The dialog hides the reads every
+refresh makes by default.
+
+**Diffs.** The side-by-side layout pairs a run of removals with the additions after it (`splitDiff.ts`);
+line staging stays in the unified layout. Ignoring whitespace (`--ignore-all-space --ignore-blank-lines`)
+switches line staging off, since that patch wouldn't apply. Image files get both sides as data URLs from
+`git cat-file` (the CSP already allows `data:` images), capped at 20 MB each.
+
+**Pull request review.** `pullRequests.detail` reads the pull request from the service, fetches its head
+and target branch (a fork's through `refs/pull/N/head` or `refs/merge-requests/N/head`, into FETCH_HEAD,
+so nothing new shows in the graph) and takes their merge base. Files and diffs then come from git like a
+commit comparison. Comments from the service are placed on diff lines by side and line number
+(`review.ts`); the rest are listed as on an older version. Pending comments and viewed files are kept in
+the renderer's localStorage per pull request until the review is submitted, then `reviewApi.ts` sends them
+in the shape each service wants (one review on GitHub and Gitea, discussions plus approve on GitLab,
+comments plus approve or request-changes on Bitbucket, threads plus a vote on Azure DevOps).
+
+**Screenshots.** `scripts/screenshots.mjs` builds two demo repositories (history with merges, tags, a
+submodule, a worktree, a stash, Git LFS, an image change, a bisect in progress) in a temporary folder,
+starts the built app with `GITLANTERN_USER_DATA` pointing at a fresh data folder and
+`--remote-debugging-port`, and drives it over the DevTools protocol: it clicks through each scene and
+captures 1400×880 PNGs. `yarn screenshots commit-details blame` retakes only those. Review mode is shot
+against a fake GitHub API served on https://localhost by the script itself.
+
 The UI was designed first as a Claude Design canvas (repository view, welcome, clone, Git services and
 remotes screens), then built to match.
 
@@ -188,9 +271,15 @@ every IPC argument.
   self-contained.
 - Don't disable Electron's `RunAsNode` fuse: the askpass helper depends on it. Replacing the helper
   with a tiny native trampoline would remove that dependency.
-- Not built yet: a settings screen (`gitPath` and `oauthClients` in `settings.json` already work),
-  staging lines of an untracked file (it's staged whole), and editing a conflict by hand inside Git
-  Steve (pick sides, or use your editor).
+- Not built yet: translations, staging lines of an untracked file (it's staged whole), editing a
+  conflict by hand inside GitLantern (pick sides, use your merge tool or your editor), keeping merge
+  commits during an interactive rebase, and comments in the side-by-side diff (review mode uses the
+  unified one).
+- Linux: the AppImage and .deb are built by the Release workflow but haven't been tried on a desktop
+  yet. Tokens need a keyring (GNOME Keyring or KWallet); without one nothing is saved.
+- External tools: editor and terminal detection is tested on Windows only; the macOS and Linux lists
+  follow the tools' documented install locations.
+- AI and review mode have been tested against mocked services only, like the other provider calls.
 - Git services: browser sign-in has no registered applications yet (see above), and isn't available
   for Bitbucket (its OAuth needs a client secret) or Azure DevOps (it needs a Microsoft Entra app).
   Repository lists show the first page (up to 100, 50 for Gitea), pull request lists the 50 most

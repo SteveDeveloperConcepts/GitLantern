@@ -26,6 +26,8 @@ export function HistoryToolbar(props: Props) {
 
   useEffect(() => {
     const focus = (event: KeyboardEvent) => {
+      // Every open tab has a toolbar; only the one on show takes the shortcut.
+      if (!input.current?.offsetParent) return
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
         event.preventDefault()
         input.current?.focus()

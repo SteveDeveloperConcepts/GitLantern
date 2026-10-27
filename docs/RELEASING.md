@@ -7,6 +7,7 @@ or `corepack enable`), then run `yarn install` in the project folder.
 |---|---|---|---|
 | `yarn dist:win` | Windows installer to share directly (NSIS) | Windows | `GitLantern-Setup-<version>.exe` |
 | `yarn dist:mac` | macOS disk image to share directly | Mac | `GitLantern-<version>-<arch>.dmg` |
+| `yarn dist:linux` | Linux AppImage and Debian package | Linux | `GitLantern-<version>-x86_64.AppImage`, `gitlantern_<version>_amd64.deb` |
 | `yarn dist:msstore` | **Microsoft Store** packages, x64 and ARM64 | Windows 10 / 11 | `GitLantern-<version>-x64.appx`, `…-arm64.appx` |
 | `yarn dist:msstore-test` | The Store package, installable on your own PC for testing | Windows 11 | `GitLantern-<version>-x64-test.appx` |
 | `yarn dist:mas` | **Mac App Store** package (Apple silicon + Intel) | Mac | `mas-universal/GitLantern-<version>-mas.pkg` |
@@ -30,8 +31,8 @@ The app icon is `build/icon.png` (macOS) and `build/icon.ico` (Windows). The Sto
 
 `yarn release` publishes a new version. It raises the version in `package.json`, commits it, tags the
 commit with your release notes, and pushes the commit and tag together. The tag starts the **Release**
-workflow, which builds the Windows and macOS installers on GitHub's servers and publishes them. You don't
-need a Mac to ship the Mac version.
+workflow, which builds the Windows, macOS and Linux installers on GitHub's servers and publishes them. You
+don't need a Mac to ship the Mac version, or Linux to ship the Linux one.
 
 1. Commit and push the work you're releasing. Run `yarn typecheck` and `yarn test`.
 2. Run `yarn release` with the new version, then one quoted line for each change. Each line appears under
@@ -56,9 +57,10 @@ need a Mac to ship the Mac version.
    If a check fails, it says what's wrong and changes nothing.
 
 3. Follow the **Release** workflow on the repository's **Actions** tab. `yarn release` prints the link. The
-   workflow type-checks and tests on Windows and macOS, then builds:
+   workflow type-checks and tests on Windows, macOS and Linux, then builds:
    - `GitLantern-Setup-<version>.exe` for Windows
    - `GitLantern-<version>-arm64.dmg` and `GitLantern-<version>-x64.dmg` for Apple silicon and Intel Macs
+   - `GitLantern-<version>-x86_64.AppImage` and `gitlantern_<version>_amd64.deb` for Linux
 
    It then publishes the release. The release notes contain:
    - **What's new**, from your lines

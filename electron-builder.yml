@@ -55,6 +55,29 @@ mac:
 dmg:
   artifactName: GitLantern-${version}-${arch}.${ext}
 
+# Linux: an AppImage (runs anywhere, updates itself) and a .deb for Debian and Ubuntu. `yarn dist:linux`.
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Development
+  icon: build/icon.png
+  executableName: gitlantern
+  synopsis: A fast, friendly desktop Git client
+  # Shown in the .deb's metadata; set explicitly so electron-builder doesn't need an email address.
+  maintainer: Steve Vaubell
+  desktop:
+    entry:
+      StartupWMClass: GitLantern
+appImage:
+  artifactName: GitLantern-${version}-${arch}.${ext}
+deb:
+  artifactName: gitlantern_${version}_${arch}.${ext}
+  # git is what GitLantern runs; the keyring keeps tokens encrypted (see secrets.ts).
+  depends:
+    - git
+    - libsecret-1-0
+
 # Mac App Store package: `yarn dist:mas` (store) or `yarn dist:mas-dev` (local test). See docs/RELEASING.md.
 mas:
   # The App Sandbox replaces the hardened runtime; `mac.hardenedRuntime` would otherwise carry over.

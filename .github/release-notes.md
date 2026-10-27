@@ -6,10 +6,12 @@
 | Windows 10 / 11 (64-bit) | `GitLantern-Setup-<version>.exe` |
 | macOS, Apple silicon (M1 and later) | `GitLantern-<version>-arm64.dmg` |
 | macOS, Intel | `GitLantern-<version>-x64.dmg` |
+| Linux (64-bit), any distribution | `GitLantern-<version>-x86_64.AppImage` |
+| Debian, Ubuntu and similar | `gitlantern_<version>_amd64.deb` |
 
 GitLantern uses the Git installed on your computer. If `git --version` doesn't work in a terminal, install [Git](https://git-scm.com/downloads) first.
 
-Once it's installed, GitLantern looks for new versions itself. On Windows it downloads them and installs them when you restart it. On a Mac it tells you when there's a new one to download.
+Once it's installed, GitLantern looks for new versions itself. On Windows and in the AppImage it downloads them and installs them when you restart it. On a Mac, and with the .deb, it tells you when there's a new one to download.
 
 ### Opening it the first time
 

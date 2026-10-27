@@ -14,7 +14,8 @@ import { setupUpdater } from './updater'
 let mainWindow: BrowserWindow | null = null
 let askpass: AskPass | undefined
 
-function createWindow(): void {
+/** `zoom`: the interface size from Settings, in percent. */
+function createWindow(zoom: number): void {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -32,6 +33,7 @@ function createWindow(): void {
     }
   })
 
+  mainWindow.webContents.on('did-finish-load', () => mainWindow?.webContents.setZoomFactor(zoom / 100))
   mainWindow.once('ready-to-show', () => mainWindow?.show())
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -48,6 +50,9 @@ function createWindow(): void {
   if (devUrl) void mainWindow.loadURL(devUrl)
   else void mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
 }
+
+// A separate data folder, for running a second copy with other settings (scripts/screenshots.mjs uses it).
+if (process.env.GITLANTERN_USER_DATA) app.setPath('userData', path.resolve(process.env.GITLANTERN_USER_DATA))
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -80,10 +85,10 @@ if (!app.requestSingleInstanceLock()) {
       sshTools: { ssh: resolveSshTool('ssh', gitPath), keygen: resolveSshTool('ssh-keygen', gitPath) },
       getWindow: () => mainWindow
     })
-    createWindow()
+    createWindow(settings.user().zoom)
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+      if (BrowserWindow.getAllWindows().length === 0) createWindow(settings.user().zoom)
     })
   })
 

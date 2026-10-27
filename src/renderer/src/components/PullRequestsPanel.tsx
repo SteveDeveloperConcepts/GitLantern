@@ -16,12 +16,15 @@ interface Props {
   reloadKey: number
   onConnectAccount(): void
   onCheckout(pr: PullRequest): void
+  /** Open it in review mode: its files, diff and comments, and a review to submit. */
+  onReview(pr: PullRequest, noun: string): void
   onCreated(pr: PullRequest, noun: string): void
   onPush(): void
 }
 
 /** Open pull requests (merge requests on GitLab) on the service that hosts the repository. */
-export function PullRequestsPanel({ repoPath, status, branches, commits, busy, reloadKey, onConnectAccount, onCheckout, onCreated, onPush }: Props) {
+export function PullRequestsPanel(props: Props) {
+  const { repoPath, status, branches, commits, busy, reloadKey, onConnectAccount, onCheckout, onReview, onCreated, onPush } = props
   const [list, setList] = useState<PullRequestList | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -111,7 +114,7 @@ export function PullRequestsPanel({ repoPath, status, branches, commits, busy, r
           ) : (
             <ul className="pr-list">
               {list.items.map((pr) => (
-                <li key={pr.number} className="pr-item" onDoubleClick={() => onCheckout(pr)} title={`${pr.title}\nDouble-click to check it out`}>
+                <li key={pr.number} className="pr-item" onDoubleClick={() => onReview(pr, noun)} title={`${pr.title}\nDouble-click to review it`}>
                   <div className="pr-title">
                     <span className="dim">#{pr.number}</span>
                     <a className="ellipsis" href={pr.url} target="_blank" rel="noreferrer">
@@ -126,6 +129,9 @@ export function PullRequestsPanel({ repoPath, status, branches, commits, busy, r
                   <span className="pr-actions">
                     <button className="small-button" disabled={busy} onClick={() => onCheckout(pr)}>
                       Check out
+                    </button>
+                    <button className="small-button primary" onClick={() => onReview(pr, noun)}>
+                      Review
                     </button>
                   </span>
                 </li>

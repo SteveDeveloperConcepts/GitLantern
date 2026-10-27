@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { RepoInfo } from '../../../shared/types'
+import type { RepoInfo, Workspace } from '../../../shared/types'
 import { Icon } from './Icon'
 
 const api = window.api
@@ -10,9 +10,12 @@ interface Props {
   onOpen(path: string): void
   onClone(): void
   onConnect(): void
+  onSettings(): void
+  workspaces: Workspace[]
+  onOpenWorkspace(workspace: Workspace): void
 }
 
-export function WelcomeScreen({ onPick, onOpen, onClone, onConnect }: Props) {
+export function WelcomeScreen({ onPick, onOpen, onClone, onConnect, onSettings, workspaces, onOpenWorkspace }: Props) {
   const [recent, setRecent] = useState<RepoInfo[]>([])
 
   useEffect(() => {
@@ -54,6 +57,21 @@ export function WelcomeScreen({ onPick, onOpen, onClone, onConnect }: Props) {
           </button>
         </div>
 
+        {workspaces.length > 0 && (
+          <section className="recent">
+            <h3>Workspaces</h3>
+            <div className="workspace-chips">
+              {workspaces.map((workspace) => (
+                <button key={workspace.id} className="workspace-chip" onClick={() => onOpenWorkspace(workspace)} title={workspace.repos.join('\n')}>
+                  <Icon name="layers" size={14} />
+                  {workspace.name}
+                  <span className="dim">{workspace.repos.length}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
         {recent.length > 0 && (
           <section className="recent">
             <h3>Recent</h3>
@@ -83,6 +101,10 @@ export function WelcomeScreen({ onPick, onOpen, onClone, onConnect }: Props) {
               {service}
             </span>
           ))}
+          <span className="spacer" />
+          <button className="link" onClick={onSettings}>
+            <Icon name="settings" size={14} /> Settings
+          </button>
         </div>
       </div>
     </div>

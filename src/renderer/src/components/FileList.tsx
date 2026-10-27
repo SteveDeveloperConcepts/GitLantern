@@ -23,18 +23,28 @@ interface Props {
   items: FileListItem[]
   selectedKey?: string | null
   onOpen(item: FileListItem): void
+  /** Right-click on a file. */
+  onContextMenu?(item: FileListItem, position: { x: number; y: number }): void
   /** Buttons that appear on hover, right to left in reverse order. */
   actions?: FileAction[]
 }
 
-export function FileList({ items, selectedKey, onOpen, actions = [] }: Props) {
+export function FileList({ items, selectedKey, onOpen, onContextMenu, actions = [] }: Props) {
   return (
     <ul className="file-list">
       {items.map((item) => {
         const { dir, base } = splitPath(item.path)
         const hasCounts = item.additions !== undefined || item.deletions !== undefined
         return (
-          <li key={item.key} className={`file-item${item.key === selectedKey ? ' selected' : ''}`}>
+          <li
+            key={item.key}
+            className={`file-item${item.key === selectedKey ? ' selected' : ''}`}
+            onContextMenu={(event) => {
+              if (!onContextMenu) return
+              event.preventDefault()
+              onContextMenu(item, { x: event.clientX, y: event.clientY })
+            }}
+          >
             <button
               className="file-open"
               onClick={() => onOpen(item)}

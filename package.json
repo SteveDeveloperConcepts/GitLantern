@@ -2,7 +2,7 @@
   "name": "gitlantern",
   "productName": "GitLantern",
   "version": "0.5.0",
-  "description": "A cross-platform Git client for macOS and Windows",
+  "description": "A cross-platform Git client for Windows, macOS and Linux",
   "author": "Steve Vaubell",
   "license": "MIT",
   "private": true,
@@ -18,11 +18,13 @@
     "dist": "electron-vite build && electron-builder",
     "dist:win": "electron-vite build && electron-builder --win",
     "dist:mac": "electron-vite build && electron-builder --mac",
+    "dist:linux": "electron-vite build && electron-builder --linux",
     "dist:msstore": "node scripts/store-check.mjs msstore && electron-vite build && electron-builder --win appx --x64 --arm64",
     "dist:msstore-test": "electron-vite build && electron-builder --win appx --x64 -c.appx.publisher=\"CN=GitLanternTest, OID.2.25.311729368913984317654407730594956997722=1\" -c.appx.artifactName=${productName}-${version}-${arch}-test.${ext}",
     "dist:mas": "node scripts/store-check.mjs mas && electron-vite build && electron-builder --mac mas --universal",
     "dist:mas-dev": "node scripts/store-check.mjs mas-dev && electron-vite build && electron-builder --mac mas-dev",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.9.0",

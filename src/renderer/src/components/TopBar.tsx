@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Branch, RepoInfo, RepoStatus } from '../../../shared/types'
 import { Icon } from './Icon'
-import { Menu } from './Menu'
+import { Menu, type MenuItem } from './Menu'
 
 const api = window.api
 
@@ -25,6 +25,9 @@ interface Props {
   onStash(): void
   onPop(): void
   onAccounts(): void
+  /** The Tools menu: editor, terminal, git-flow, LFS, patches… */
+  toolGroups: MenuItem[][]
+  onSettings(): void
 }
 
 export function TopBar(props: Props) {
@@ -84,6 +87,18 @@ export function TopBar(props: Props) {
           [{ key: 'new', label: 'New branch…', onSelect: props.onNewBranch }]
         ]}
       />
+      <Menu
+        label="Tools"
+        triggerClassName="bar-button plain"
+        trigger={
+          <>
+            <Icon name="tools" size={15} className="dim" />
+            Tools
+            <Icon name="chevron" size={12} className="dim" />
+          </>
+        }
+        groups={props.toolGroups}
+      />
 
       <div className="spacer" />
 
@@ -115,6 +130,9 @@ export function TopBar(props: Props) {
       <button className="bar-button plain" onClick={props.onAccounts} title="Git services and accounts">
         <Icon name="link" /> Accounts
         {accountCount > 0 && <span className="dot ok" aria-label={`${accountCount} connected`} />}
+      </button>
+      <button className="icon-button plain" onClick={props.onSettings} title="Settings" aria-label="Settings">
+        <Icon name="settings" />
       </button>
     </header>
   )
