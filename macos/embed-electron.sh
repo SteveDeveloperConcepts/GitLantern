@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build phase of the GitLantern target in GitLantern.xcodeproj. It puts the Electron app that
 # build-electron.sh made into the app Xcode is building, then signs everything inside it with the
-# certificate Xcode signs with, and the entitlements that inherit the App Sandbox. Xcode itself signs the
-# app last, with GitLantern.entitlements and your provisioning profile.
+# certificate Xcode signs with, and the entitlements that inherit the App Sandbox (the login helper gets
+# the app's own). Xcode itself signs the app last, with GitLantern.entitlements and your provisioning profile.
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -26,9 +26,10 @@ if [ "${CODE_SIGNING_ALLOWED:-YES}" != YES ] || [ -z "$identity" ]; then
   echo "warning: Code signing is off, so this app won't start in the App Sandbox. Choose your team under Signing & Capabilities."
   exit 0
 fi
-flags=(--force --sign "$identity" --entitlements "$root/build/entitlements.mas.inherit.plist")
+flags=(--force --sign "$identity")
 # Like Xcode's own Debug signatures, without asking Apple's timestamp server.
 if [ "${CONFIGURATION:-}" = Debug ]; then flags+=(--timestamp=none); fi
+inherit=(--entitlements "$root/build/entitlements.mas.inherit.plist")
 
 # codesign works from the inside out: every program and library first (the bundled Git, and those inside
 # Electron's framework and helper apps), then the bundles that hold them, the deepest first.
@@ -39,6 +40,13 @@ while IFS= read -r -d '' file; do
 done < <(find "$dest/Frameworks" "$dest/Resources" -type f -print0)
 find "$dest/Frameworks" -type d \( -name '*.app' -o -name '*.framework' \) >>"$list"
 awk -F/ '{ print NF "\t" $0 }' "$list" | sort -rn | cut -f2- | while IFS= read -r item; do
-  /usr/bin/codesign "${flags[@]}" "$item" || fail "Couldn't sign ${item#"$dest"/}"
+  /usr/bin/codesign "${flags[@]}" "${inherit[@]}" "$item" || fail "Couldn't sign ${item#"$dest"/}"
 done
+# Electron's login helper. macOS starts it, not the app, so it has no sandbox to inherit: it gets the app's
+# own entitlements, as electron-builder does (entitlementsLoginHelper).
+if [ -d "$dest/Library/LoginItems" ]; then
+  find "$dest/Library/LoginItems" -maxdepth 1 -type d -name '*.app' -print0 | while IFS= read -r -d '' item; do
+    /usr/bin/codesign "${flags[@]}" --entitlements "$root/build/entitlements.mas.plist" "$item" || fail "Couldn't sign ${item#"$dest"/}"
+  done
+fi
 echo "Signed what's inside $PRODUCT_NAME.app with ${EXPANDED_CODE_SIGN_IDENTITY_NAME:-$identity}"
