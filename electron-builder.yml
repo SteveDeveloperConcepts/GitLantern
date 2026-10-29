@@ -34,9 +34,9 @@ nsis:
 # Microsoft Store package: `yarn dist:msstore`. See docs/RELEASING.md.
 appx:
   # Copy these three from Partner Center → your app → Product management → Product identity.
-  identityName: REPLACE-ME.GitLantern # Package/Identity/Name
-  publisher: CN=REPLACE-ME # Package/Identity/Publisher
-  publisherDisplayName: REPLACE-ME # Package/Properties/PublisherDisplayName
+  identityName: 49367DeveloperConcepts.GitLantern # Package/Identity/Name
+  publisher: CN=6A20E44B-B632-4DE4-995D-A8CDAE841B59 # Package/Identity/Publisher
+  publisherDisplayName: Developer Concepts # Package/Properties/PublisherDisplayName
   applicationId: GitLantern
   displayName: GitLantern
   backgroundColor: transparent
