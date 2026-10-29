@@ -251,6 +251,15 @@ with these captions [200]:
 | 1:1 Box art (2160×2160) | `dist/store/microsoft-store/box-art.png` |
 | 16:9 Super hero art (3840×2160), optional | `dist/store/microsoft-store/hero-art.png` (no text: the Store writes the name over its bottom left) |
 
+**Store display images** (optional: without them the Store uses the smaller logo in the package). These
+are committed, so they need no build step; `python scripts/make_icons.py` redraws them.
+
+| Partner Center | File |
+|---|---|
+| 1:1 App tile icon (300×300) | `build/store-display/300x300.png` |
+| 1:1 (150×150) | `build/store-display/150x150.png` |
+| 1:1 (71×71) | `build/store-display/71x71.png` |
+
 ### Additional information
 
 **Search terms** [7 × 30, 21 words in all]:

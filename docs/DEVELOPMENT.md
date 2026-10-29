@@ -80,7 +80,8 @@ src/
     src/graph/CommitGraph.tsx virtualised list plus a canvas that draws only the visible lanes
 test/                   integration tests against real temporary repositories
 resources/askpass.cmd   askpass trampoline shipped with packaged Windows builds
-build/                  app icon, Store tile images (appx/), Mac App Store entitlements, and
+build/                  app icon, Store tile images (appx/), Partner Center's Store display images
+                        (store-display/), Mac App Store entitlements, and
                         adhoc-mac.yml (Mac builds without a certificate)
 scripts/                `yarn release`, store-build preflight check, icon generator, `yarn screenshots`,
                         build-mas-git.sh (the App Store version's Git)

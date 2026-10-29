@@ -5,7 +5,8 @@ the design (needs Python 3 and Pillow: `pip install pillow`):
 
     python scripts/make_icons.py
 
-Writes build/icon.png (macOS, 1024 px), build/icon.ico (Windows) and build/appx/*.png (Store tiles).
+Writes build/icon.png (macOS, 1024 px), build/icon.ico (Windows), build/appx/*.png (Store tiles) and
+build/store-display/*.png (the Store display images you upload in Partner Center).
 """
 
 from pathlib import Path
@@ -134,7 +135,14 @@ def main():
         image.save(appx / f"Square44x44Logo.targetsize-{n}.png")
         image.save(appx / f"Square44x44Logo.targetsize-{n}_altform-unplated.png")
 
-    print(f"Wrote {BUILD / 'icon.png'}, {BUILD / 'icon.ico'} and {len(list(appx.glob('*.png')))} Store images in {appx}")
+    # Partner Center's Store display images (Store listing → Store logos), drawn like the package's StoreLogo.
+    display = BUILD / "store-display"
+    display.mkdir(exist_ok=True)
+    for n in (300, 150, 71):
+        icon(n, tile=0.94).save(display / f"{n}x{n}.png")
+
+    print(f"Wrote {BUILD / 'icon.png'}, {BUILD / 'icon.ico'}, {len(list(appx.glob('*.png')))} Store images in {appx}"
+          f" and the Store display images in {display}")
 
 
 if __name__ == "__main__":
