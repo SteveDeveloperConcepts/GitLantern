@@ -32,7 +32,9 @@ an OAuth application set up for each server first (README, "Where your data live
 
 ### Version information
 
-**Screenshots:** the ten in `dist/store/mac-app-store/`, in file-name order (2880×1800).
+**Screenshots:** the ten in `dist/store/mac-app-store/`, in file-name order (2880×1800). Not the ones in
+`docs/screenshots/`: those are the README's, at 1400×880, which App Store Connect turns down as "File
+dimensions are invalid", and they show the diff and merge tool links this version doesn't have.
 
 **Promotional text** [170] (can change at any time, without a new version):
 

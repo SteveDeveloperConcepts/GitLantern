@@ -167,7 +167,9 @@ app.whenReady().then(async () => {
   try {
     const missing = [...mac, ...microsoft].map(([name]) => name).filter((name) => !fs.existsSync(path.join(screens, `${name}.png`)))
     if (missing.length > 0) throw new Error(`Missing from dist/store/screens: ${[...new Set(missing)].join(', ')}. Run \`yarn screenshots --store\` first.`)
-    const win = new BrowserWindow({ show: false, enableLargerThanScreen: true, useContentSize: true, width: 1200, height: 800 })
+    // Offscreen, so the hidden window still draws: on Windows Page.captureScreenshot otherwise waits forever
+    // for a frame that never comes.
+    const win = new BrowserWindow({ show: false, enableLargerThanScreen: true, useContentSize: true, width: 1200, height: 800, webPreferences: { offscreen: true } })
     win.webContents.debugger.attach()
     const sets = [
       ['mac-app-store', mac, macPage],
