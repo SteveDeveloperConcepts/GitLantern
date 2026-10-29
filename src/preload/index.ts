@@ -26,6 +26,8 @@ function subscribe<T>(channel: string, callback: (payload: T) => void): () => vo
 }
 
 const api: GitLanternApi = {
+  // Set by the main process (src/main/index.ts).
+  appStore: process.argv.includes('--gitlantern-app-store'),
   repo: {
     pick: () => call(Invoke.repoPick),
     open: (path) => call(Invoke.repoOpen, path),
@@ -68,7 +70,8 @@ const api: GitLanternApi = {
   ssh: {
     key: () => call(Invoke.sshKey),
     generate: (comment) => call(Invoke.sshGenerate, comment),
-    test: (host) => call(Invoke.sshTest, host)
+    test: (host) => call(Invoke.sshTest, host),
+    importKeys: () => call(Invoke.sshImport)
   },
   clipboard: {
     write: (text) => call(Invoke.clipboardWrite, text)
@@ -158,7 +161,8 @@ const api: GitLanternApi = {
     clean: (repo, paths) => call(Invoke.gitClean, repo, paths),
     ignore: (repo, pattern, where) => call(Invoke.gitIgnore, repo, pattern, where),
     identity: (repo) => call(Invoke.gitIdentity, repo),
-    setConfig: (repo, key, value) => call(Invoke.gitSetConfig, repo, key, value)
+    setConfig: (repo, key, value) => call(Invoke.gitSetConfig, repo, key, value),
+    importIdentity: () => call(Invoke.gitImportIdentity)
   },
   settings: {
     get: () => call(Invoke.settingsGet),

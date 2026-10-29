@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { startAskPassServer, type AskPassServer } from '../src/main/askpass/server'
+import { fitsSocketPath, startAskPassServer, type AskPassServer } from '../src/main/askpass/server'
 import { askPassEnv, writeTrampoline } from '../src/main/askpass/trampoline'
 import { runGit } from '../src/main/git/runGit'
 import { isolateGit } from './helpers'
@@ -10,7 +10,20 @@ import { isolateGit } from './helpers'
 // The helper must be the built single-file script, exactly as git runs it in the app.
 const helper = path.resolve(import.meta.dirname, '../out/main/askpass.js')
 
-describe.skipIf(!fs.existsSync(helper))('askpass round trip (needs `npm run build`)', () => {
+describe('fitsSocketPath', () => {
+  it('takes paths up to 103 bytes, the most a macOS socket path can be', () => {
+    expect(fitsSocketPath(`/${'a'.repeat(102)}`)).toBe(true)
+    expect(fitsSocketPath(`/${'a'.repeat(103)}`)).toBe(false)
+    // Counted in bytes, not characters.
+    expect(fitsSocketPath(`/${'é'.repeat(52)}`)).toBe(false)
+  })
+})
+
+// Over a socket (a named pipe on Windows), and over 127.0.0.1 as when the socket's path would be too long.
+describe.skipIf(!fs.existsSync(helper)).each([
+  ['socket', false],
+  ['127.0.0.1', true]
+])('askpass round trip over %s (needs `npm run build`)', (_name, tcp) => {
   let server: AskPassServer
   const prompts: string[] = []
   let env: Record<string, string>
@@ -18,6 +31,7 @@ describe.skipIf(!fs.existsSync(helper))('askpass round trip (needs `npm run buil
   beforeAll(async () => {
     isolateGit()
     server = await startAskPassServer({
+      tcp,
       onPrompt: async (prompt) => {
         prompts.push(prompt)
         if (prompt.startsWith('Username')) return 'alice'

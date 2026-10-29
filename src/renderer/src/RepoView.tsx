@@ -620,7 +620,7 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
     const entry = status?.entries.find((e) => e.path === file)
     const groups = fileItems(file, { file }, !untracked)
     if (untracked) groups.splice(1, 0, ignoreItems(file))
-    if (entry?.conflicted) {
+    if (entry?.conflicted && !api.appStore) {
       groups.splice(1, 0, [
         { key: 'mergetool', label: 'Resolve in merge tool', onSelect: () => void api.tools.mergeTool(repo.path, file).catch((err: unknown) => reportError(errorMessage(err))) }
       ])

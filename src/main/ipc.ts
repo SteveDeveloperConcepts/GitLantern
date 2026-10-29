@@ -37,6 +37,7 @@ import type { AccountStore } from './accounts/store'
 import * as ai from './ai'
 import { REMEMBERED_PREFIX, type AskPass } from './askpass'
 import { commandLog } from './commandLog'
+import type { FolderAccess } from './folderAccess'
 import * as bisect from './git/bisect'
 import * as git from './git/commands'
 import * as files from './git/files'
@@ -46,9 +47,10 @@ import * as inspect from './git/inspect'
 import * as refs from './git/refs'
 import * as structure from './git/structure'
 import * as pullRequests from './pullRequests'
+import { appStore, userHome } from './sandbox'
 import type { SecretStore } from './secrets'
 import { sanitizeSettings, type Settings } from './settings'
-import { generateKey, loadKey, testSsh } from './ssh'
+import { generateKey, importKeys, loadKey, testSsh } from './ssh'
 import * as tools from './tools'
 import type { Updater } from './updater'
 import { watchRepo } from './watcher'
@@ -58,6 +60,8 @@ interface Context {
   secrets: SecretStore
   accounts: AccountStore
   askpass: AskPass
+  /** The folders the Mac App Store build may use. */
+  folders: FolderAccess
   updater: Updater
   sshTools: { ssh: string; keygen: string }
   getWindow(): BrowserWindow | null
@@ -316,7 +320,13 @@ export function registerIpc(ctx: Context): void {
   }
 
   async function openRepo(dir: string): Promise<RepoInfo> {
-    const root = await git.getRepoRoot(dir)
+    ctx.folders.open(dir)
+    let root: string
+    try {
+      root = await git.getRepoRoot(dir)
+    } catch (error) {
+      throw ctx.folders.explain(error, dir)
+    }
     openRepos.add(root)
     ctx.settings.addRecentRepo(root)
     if (!watchers.has(root)) {
@@ -331,18 +341,21 @@ export function registerIpc(ctx: Context): void {
     return repoInfo(root, await git.originUrl(root))
   }
 
+  /** A folder the user picks. The Mac App Store build keeps a bookmark of it, to use it again after a restart. */
   async function pickFolder(title: string): Promise<string | null> {
     const window = ctx.getWindow()
-    const options = { title, properties: ['openDirectory' as const, 'createDirectory' as const] }
+    const options = { title, properties: ['openDirectory' as const, 'createDirectory' as const], securityScopedBookmarks: appStore }
     const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
-    return result.canceled ? null : (result.filePaths[0] ?? null)
+    const folder = result.canceled ? null : (result.filePaths[0] ?? null)
+    if (folder) ctx.folders.remember(folder, result.bookmarks?.[0])
+    return folder
   }
 
   async function pickSaveFile(title: string, defaultName: string, extension: string): Promise<string | null> {
     const window = ctx.getWindow()
     const options = {
       title,
-      defaultPath: path.join(os.homedir(), defaultName),
+      defaultPath: path.join(userHome(), defaultName),
       filters: [{ name: extension.toUpperCase(), extensions: [extension] }]
     }
     const result = window ? await dialog.showSaveDialog(window, options) : await dialog.showSaveDialog(options)
@@ -379,9 +392,17 @@ export function registerIpc(ctx: Context): void {
     return dir ? openRepo(dir) : null
   })
   handle(Invoke.repoPickFolder, () => pickFolder('Clone into'))
-  handle(Invoke.repoDefaultCloneFolder, () => ctx.settings.get().cloneFolder ?? path.join(os.homedir(), 'Code'))
+  handle(Invoke.repoDefaultCloneFolder, () => {
+    const saved = ctx.settings.get().cloneFolder
+    // The App Store version may only write in folders the user picked, so it has no default of its own.
+    if (appStore) return saved && ctx.folders.reachable(saved, true) ? saved : ''
+    return saved ?? path.join(os.homedir(), 'Code')
+  })
   handle(Invoke.repoClone, async (url, parentFolder) => {
     const parent = path.resolve(str(parentFolder, 'folder'))
+    if (appStore && !ctx.folders.reachable(parent, true)) {
+      throw new Error('macOS only lets GitLantern write in folders you choose. Pick the folder to clone into with Browse….')
+    }
     const target = await git.clone(str(url, 'address'), parent, (progress) =>
       ctx.getWindow()?.webContents.send(Events.cloneProgress, progress)
     )
@@ -398,13 +419,14 @@ export function registerIpc(ctx: Context): void {
     Promise.all(
       ctx.settings
         .get()
-        .recentRepos.filter((p) => fs.existsSync(p))
+        .recentRepos.filter((p) => ctx.folders.reachable(p))
         .map(async (p) => repoInfo(p, await git.originUrl(p).catch(() => null)))
     )
   )
   handle(Invoke.repoOpenRelated, async (repo, target) => {
     const parent = knownRepo(repo)
     const requested = path.resolve(parent, str(target, 'path'))
+    ctx.folders.open(requested)
     // Only what git lists for this repository: its submodules (folders inside it) and its worktrees.
     const [submodules, worktrees] = await Promise.all([structure.submodules(parent), structure.worktrees(parent)])
     const listed =
@@ -421,7 +443,7 @@ export function registerIpc(ctx: Context): void {
     for (const p of Array.isArray(paths) ? paths : []) {
       if (typeof p !== 'string' || !p) continue
       const repoPath = path.resolve(p)
-      if (!known.has(repoPath) || !fs.existsSync(repoPath)) continue
+      if (!known.has(repoPath) || !ctx.folders.reachable(repoPath)) continue
       // One that's no longer a repository is left out.
       opened.push(await openRepo(repoPath).catch(() => null))
     }
@@ -478,6 +500,18 @@ export function registerIpc(ctx: Context): void {
   handle(Invoke.sshKey, () => loadKey(ctx.sshTools.keygen))
   handle(Invoke.sshGenerate, (comment) => generateKey(ctx.sshTools.keygen, typeof comment === 'string' ? comment : ''))
   handle(Invoke.sshTest, (host) => testSsh(ctx.sshTools.ssh, str(host, 'host'), ctx.askpass.env))
+  // The Mac App Store build's ssh only sees GitLantern's own .ssh folder, so the user's keys are copied in.
+  handle(Invoke.sshImport, async () => {
+    const window = ctx.getWindow()
+    const options = {
+      title: 'Choose your .ssh folder',
+      defaultPath: path.join(userHome(), '.ssh'),
+      properties: ['openDirectory' as const, 'showHiddenFiles' as const]
+    }
+    const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+    const folder = result.canceled ? undefined : result.filePaths[0]
+    return folder ? importKeys(folder, ctx.sshTools.keygen) : null
+  })
 
   handle(Invoke.clipboardWrite, (text) => clipboard.writeText(str(text, 'text')))
 
@@ -622,6 +656,18 @@ export function registerIpc(ctx: Context): void {
     files.ignore(knownRepo(repo), str(pattern, 'pattern'), oneOf(where, ['gitignore', 'exclude'] as const, 'ignore file'))
   )
   handle(Invoke.gitIdentity, (repo) => files.identity(knownRepo(repo)))
+  // The Mac App Store build's git has a home folder of its own, so it starts without the user's name and email.
+  handle(Invoke.gitImportIdentity, async () => {
+    const window = ctx.getWindow()
+    const options = {
+      title: 'Choose your Git settings file',
+      defaultPath: path.join(userHome(), '.gitconfig'),
+      properties: ['openFile' as const, 'showHiddenFiles' as const]
+    }
+    const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options)
+    const file = result.canceled ? undefined : result.filePaths[0]
+    return file ? files.importIdentity(file) : null
+  })
   handle(Invoke.gitSetConfig, (repo, key, value) =>
     files.setConfig(
       repo === null ? null : knownRepo(repo),
@@ -651,6 +697,7 @@ export function registerIpc(ctx: Context): void {
     }
   })
   handle(Invoke.settingsChooseGit, async (reset) => {
+    if (appStore) throw new Error('The App Store version of GitLantern always uses the Git built into it.')
     if (reset === true) {
       const result = ctx.settings.setGitPath(null)
       broadcastSettings()

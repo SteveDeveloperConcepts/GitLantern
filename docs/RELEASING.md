@@ -10,8 +10,9 @@ or `corepack enable`), then run `yarn install` in the project folder.
 | `yarn dist:linux` | Linux AppImage and Debian package | Linux | `GitLantern-<version>-x86_64.AppImage`, `gitlantern_<version>_amd64.deb` |
 | `yarn dist:msstore` | **Microsoft Store** packages, x64 and ARM64 | Windows 10 / 11 | `GitLantern-<version>-x64.appx`, `…-arm64.appx` |
 | `yarn dist:msstore-test` | The Store package, installable on your own PC for testing | Windows 11 | `GitLantern-<version>-x64-test.appx` |
-| `yarn dist:mas` | **Mac App Store** package (Apple silicon + Intel) | Mac | `mas-universal/GitLantern-<version>-mas.pkg` |
-| `yarn dist:mas-dev` | Sandboxed build that runs on your own Mac, for testing | Mac | `mas-dev…/GitLantern.app` |
+| **Product → Archive** in `macos/GitLantern.xcodeproj` (`yarn xcode`) | **Mac App Store** archive (Apple silicon + Intel), uploaded from Xcode's Organizer | Mac with Xcode | Xcode's Organizer |
+| `yarn dist:mas` | The same Mac App Store build without Xcode, as a package for Transporter | Mac with Xcode | `mas-universal/GitLantern-<version>-mas.pkg` |
+| `yarn dist:mas-dev` | Sandboxed build that runs on your own Mac, for testing | Mac with Xcode | `mas-dev…/GitLantern.app` |
 
 The store commands check your setup first and stop with a message saying what's missing.
 
@@ -199,27 +200,139 @@ Certification usually takes a few days. Partner Center emails you with the resul
 
 ## Mac App Store
 
-> **Not ready for submission yet.** `yarn dist:mas` builds and signs a correct Mac App Store package,
-> but Apple requires every App Store app to run inside the **App Sandbox**, and GitLantern can't do its
-> main job there yet:
->
-> - **Git won't start.** Apple's `/usr/bin/git` refuses to run inside a sandboxed app. Git installed by
->   Homebrew or Xcode sits outside the folders a sandboxed app may use. The app would need its own copy
->   of Git inside the bundle. Git is GPL-2.0 software, and whether GPL code may be distributed through the
->   App Store is legally disputed, so get advice before shipping it that way.
-> - **Your settings and keys aren't visible.** In the sandbox, the home folder is the app's own container.
->   Your `~/.gitconfig` (the name and email on your commits), `~/.ssh` keys and `known_hosts` can't be
->   seen.
-> - **Recent repositories don't reopen.** The sandbox only allows folders picked in the open dialog,
->   until the app is restarted. Remembering them needs security-scoped bookmarks. The entitlement is
->   already set; the code isn't written.
-> - **The sign-in helper** should run through Electron's helper app, which has the sandbox-inherit
->   entitlement, rather than the main app binary.
->
-> Until that's done, ship the Mac version directly instead: a **Developer ID-signed, notarised DMG** from
-> `yarn dist:mac` (below). Most desktop Git clients for the Mac are distributed this way.
+You build, archive and upload the App Store version in **Xcode**, with `macos/GitLantern.xcodeproj`
+(`yarn xcode` opens it). The project has two targets:
 
-### Recommended for now: notarised DMG
+- **Electron app** runs `macos/build-electron.sh`. That builds the bundled Git, the JavaScript, and the
+  App Store variant of the Electron app with electron-builder, unsigned, into `dist/xcode/`.
+- **GitLantern** is the app Xcode builds and signs. Its build phase, `macos/embed-electron.sh`, copies the
+  Electron app into it and signs everything inside with the certificate Xcode picked. Then Xcode signs
+  the app itself, with `macos/GitLantern.entitlements` and your provisioning profile.
+
+So **Product → Run** starts the sandboxed app on your Mac, and **Product → Archive** makes the archive that
+**Distribute App** uploads. Without Xcode, `yarn dist:mas` builds the same app as a signed `.pkg` for
+Transporter.
+
+### How the App Store version differs
+
+Apple runs every App Store app inside the **App Sandbox**. GitLantern works around it like this:
+
+- **It brings its own Git.** Apple's `/usr/bin/git` refuses to run in the sandbox, and Git from Homebrew is
+  out of its reach. `scripts/build-mas-git.sh` compiles Git (universal, linked only against libraries that
+  come with macOS) and adds Git LFS, into `build/mas-git/`. Xcode's build and `yarn dist:mas` both run
+  the script, which only builds again when the versions pinned in it change. The app runs that Git from `Contents/Resources/git`,
+  and Settings → Git offers no other.
+- **Folders:** the app can only use folders picked in an open dialog. It keeps a security-scoped bookmark
+  of each one, so Recent, open tabs and workspaces reopen after a restart (`src/main/folderAccess.ts`). A
+  repository is opened by its top folder, and clones go into a folder picked with **Browse…**.
+- **Your Git settings and SSH keys:** the app's home folder is its own container, so `~/.gitconfig` and
+  `~/.ssh` aren't visible. **Settings → Git → Copy name and email from ~/.gitconfig…** takes your name and
+  email. **Git services → SSH key → Use the keys in ~/.ssh…** copies your keys and `known_hosts` into the
+  app's own `.ssh` folder, which its ssh uses. **Create an SSH key** makes a new one there.
+- **Other programs:** editors and terminals open through macOS (`open -a`). External diff and merge tools
+  (`git difftool` / `mergetool`) aren't offered, because they'd have to run inside the sandbox. Custom
+  actions do run inside it, so some may not work.
+- **Sign-in:** Git's askpass helper runs through Electron's helper app, which inherits the sandbox.
+  Browser sign-in to GitLab and Gitea needs the `network.server` entitlement for its `127.0.0.1` redirect.
+- **Updates** come from the App Store. The GitHub update check is off.
+
+The sandbox entitlements are in `build/entitlements.mas.plist` (the app) and
+`build/entitlements.mas.inherit.plist` (everything inside it, the bundled Git included). electron-builder
+adds your Team ID and app group from the provisioning profile while signing. Xcode signs the app with
+`macos/GitLantern.entitlements` instead: the same list with that group written in, which
+`test/xcode.test.ts` keeps in step. `ITSAppUsesNonExemptEncryption` is set to false, so App Store Connect
+doesn't ask about export compliance for each build.
+
+### One-time setup
+
+1. Join the [Apple Developer Program](https://developer.apple.com/programs/).
+2. Install **Xcode** from the App Store and open it once to finish installing. Its compiler builds the
+   bundled Git. Install [Node.js](https://nodejs.org) and Yarn 1 too, and run `yarn install` in the project
+   folder: Xcode's build runs them.
+3. **Certificates:** in Xcode, go to **Settings → Accounts**, sign in, then **Manage Certificates → +**. Add
+   **Apple Distribution** and **Apple Development** (and **Mac Installer Distribution** if you'll also use
+   `yarn dist:mas`).
+4. **App ID:** on [developer.apple.com](https://developer.apple.com/account/resources/identifiers/list), go
+   to **Certificates, IDs & Profiles → Identifiers → +** and register an App ID with the explicit bundle ID
+   `com.developerconcepts.gitlantern` (`appId` in `electron-builder.yml`). It needs no extra capabilities.
+5. **App Store profile:** on the same site, under **Profiles → +**, create a **Mac App Store Connect**
+   profile for that App ID and your Apple Distribution certificate. Name it exactly
+   **GitLantern Mac App Store**: the project's Release configuration looks for it by that name. Then, in
+   Xcode, go to **Settings → Accounts →** your team **→ Download Manual Profiles**.
+6. **Your team in the project:** open the project with `yarn xcode`, select the **GitLantern** target, then
+   **Signing & Capabilities**. Under both **Debug** and **Release**, choose your **Team**. Debug signs
+   automatically, for running on your Mac. Release uses the Apple Distribution certificate and the profile
+   above. This writes your team ID into the project file, which is fine to commit.
+7. **App record:** in [App Store Connect](https://appstoreconnect.apple.com), go to **Apps → + → New App**.
+   Choose macOS, the bundle ID above, a name, a primary language and an SKU (any ID you like, such as `gitlantern`).
+
+For `yarn dist:mas` and `yarn dist:mas-dev` (without Xcode), electron-builder reads the profiles from files:
+save the App Store profile as `build/embedded.provisionprofile`, and a **macOS App Development** profile
+that includes your Mac as `build/development.provisionprofile`. Both are git-ignored, because they're tied
+to your account.
+
+### Test the sandboxed app
+
+In Xcode, choose the **GitLantern** scheme and **My Mac**, then **Product → Run** (⌘R). The first build
+takes a few minutes while it compiles Git; later ones reuse it. It builds for your Mac's processor only,
+and starts the app inside the App Sandbox, signed for your Mac. (Without Xcode, `yarn dist:mas-dev` makes
+the same build in `dist/mas-dev-arm64/`.)
+
+Try what App Review will try, and what the sandbox affects:
+
+- Open a repository, quit, start again: Recent and the open tabs come back.
+- Clone over HTTPS, with and without a connected account, and push.
+- Use your SSH keys, clone over SSH and push.
+- Sign in to GitLab in the browser.
+- Copy your name and email, then commit.
+- Open a repository that uses Git LFS.
+- Open in editor and Open in terminal.
+
+If something is blocked, the sandbox logs it. To watch while you try:
+
+```bash
+log stream --style compact --predicate 'eventMessage CONTAINS "deny" AND eventMessage CONTAINS "GitLantern"'
+```
+
+### Release from Xcode
+
+1. Raise `version` in `package.json`. Each upload needs a version App Store Connect hasn't had before.
+   The version comes from there, not from Xcode's own version fields.
+2. In Xcode, choose the **GitLantern** scheme and **Any Mac (Apple Silicon, Intel)**, then
+   **Product → Archive**. It builds the app for both processors with the Release configuration, signs it
+   with your Apple Distribution certificate, and opens the archive in the **Organizer** when it's done.
+3. In the Organizer, select the archive and click **Distribute App**. Choose **App Store Connect**, then
+   **Upload**. When Xcode asks about signing, choose **Manually manage signing** with your Apple
+   Distribution certificate and the GitLantern Mac App Store profile. Xcode checks the app before it
+   uploads. A warning about missing symbols (dSYMs) for Electron's frameworks is expected, and doesn't
+   stop the upload.
+4. App Store Connect emails you when the build has been processed (usually within half an hour). Then
+   open the app's version page, pick the build under **Build**, and fill in the listing:
+   - **Screenshots:** Mac sizes are 1280×800, 1440×900, 2560×1600 or 2880×1800. `yarn screenshots` makes
+     1400×880 images, so resize or pad them.
+   - **App Privacy:** GitLantern collects nothing itself. The AI commit message feature sends the staged
+     changes to the provider the user sets up, with their own key, only when they use it.
+   - **App Review notes:** say how to try it without an account, for example: "Choose Clone, paste
+     https://github.com/octocat/Hello-World or any public repository, pick a folder with Browse…, then Clone."
+5. Click **Add for Review**, then **Submit**.
+
+Without Xcode, `yarn dist:mas` checks your certificates and profile files, builds and signs the same app,
+and writes `dist/mas-universal/GitLantern-<version>-mas.pkg`. Upload that with Apple's
+[Transporter](https://apps.apple.com/app/transporter/id1450874784) app instead of steps 2 and 3.
+
+If the archive fails, Xcode's **Report navigator** (⌘9) shows each build step's output. The two
+GitLantern steps print lines starting with `error:` when something's missing, such as Node.js or
+`yarn install`.
+
+### Licences of the bundled programs
+
+The App Store version ships Git (GPL-2.0, with some LGPL-2.1 parts) and Git LFS (MIT). Their licences, and
+the exact source each was built from, are in `GitLantern.app/Contents/Resources/git/licenses/`. The GPL
+asks that whoever receives Git can get its source: keep a copy of the Git source tarball named there, for
+example attached to each GitHub release. Whether the App Store's terms are compatible with the GPL is
+disputed (the Free Software Foundation says they aren't), so get advice if that matters to you.
+
+### Outside the App Store: notarised DMG
 
 1. Join the [Apple Developer Program](https://developer.apple.com/programs/).
 2. In Xcode, go to **Settings → Accounts → Manage Certificates**, and add a **Developer ID Application**
@@ -233,26 +346,3 @@ Certification usually takes a few days. Partner Center emails you with the resul
    ```
 
 5. Attach the DMG to a GitHub release. It opens without the Gatekeeper warning.
-
-### Mac App Store setup, for when the app is sandbox-ready
-
-1. **Certificates:** in Xcode, go to **Settings → Accounts → Manage Certificates**. Add **Apple Distribution**
-   and **Mac Installer Distribution**. Add **Apple Development** too, for `dist:mas-dev`.
-2. **App ID:** on developer.apple.com, go to **Certificates, IDs & Profiles → Identifiers**. Register the
-   explicit bundle ID `com.developerconcepts.gitlantern` (`appId` in `electron-builder.yml`).
-3. **Profiles:** on the same site, under **Profiles**, create the following and save them with these exact names:
-   - **Mac App Store Connect** (distribution) → `build/embedded.provisionprofile`
-   - **macOS App Development**, including your Mac → `build/development.provisionprofile`
-
-   Both are git-ignored, because they're tied to your account.
-4. **App record:** in [App Store Connect](https://appstoreconnect.apple.com), go to **Apps → + → New App**
-   (macOS). Pick the bundle ID above.
-5. Build with `yarn dist:mas-dev` and test the sandboxed app on your Mac. Then run `yarn dist:mas`.
-6. Upload `dist/mas-universal/GitLantern-<version>-mas.pkg` with Apple's
-   [Transporter](https://apps.apple.com/app/transporter/id1450874784) app. Then pick the build in App Store
-   Connect, fill in the listing, and submit it for review.
-
-The sandbox entitlements are in `build/entitlements.mas.plist` (the app) and
-`build/entitlements.mas.inherit.plist` (Electron's helpers). electron-builder adds your Team ID and app
-group from the provisioning profile while signing. App Store Connect also asks an export-compliance
-question about encryption for each build.

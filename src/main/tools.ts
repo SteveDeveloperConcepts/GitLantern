@@ -6,6 +6,7 @@ import type { CustomAction, CustomActionContext, CustomActionResult, DiffTarget,
 import { assertHash, assertRevision, insideRepo, LITERAL_PATHS, parentsOf, withOrigPath } from './git/commands'
 import { resolveGitPath } from './git/resolveGit'
 import { gitExecutable, GitError, runGit } from './git/runGit'
+import { appStore, userHome } from './sandbox'
 
 /** A detected editor or terminal, and how to start it. */
 export interface LaunchableTool extends ExternalTool {
@@ -104,7 +105,7 @@ function exeNear(file: string, names: string[], levels: number): string | null {
 }
 
 function macApp(name: string): string | null {
-  const folders = ['/Applications', path.join(os.homedir(), 'Applications')]
+  const folders = ['/Applications', path.join(userHome(), 'Applications')]
   const candidates = path.isAbsolute(name) ? [name] : folders.map((dir) => path.join(dir, name))
   return candidates.find(isDirectory) ?? null
 }
@@ -193,7 +194,9 @@ function editorTool(spec: EditorSpec): LaunchableTool | null {
   if (process.platform === 'darwin') {
     const app = macApp(spec.app)
     if (!app) return null
-    const cli = spec.appCli.map((file) => path.join(app, file)).find(isExecutable)
+    // In the App Store version a program GitLantern starts runs in its sandbox, where an editor's
+    // command-line tool can't reach the editor: `open` has macOS start the app on its own.
+    const cli = appStore ? undefined : spec.appCli.map((file) => path.join(app, file)).find(isExecutable)
     return cli ? { ...tool, command: cli, args: openFolder } : { ...tool, command: OPEN, args: openWith(app) }
   }
   // ZFS has a daemon called zed in sbin; editors never live there.
@@ -275,8 +278,20 @@ function exeInScript(file: string): string | null {
   return null
 }
 
+/**
+ * App Store version: JetBrains IDEs found as apps, opened with `open`. Toolbox's launch scripts would
+ * start the IDE inside GitLantern's sandbox.
+ */
+function jetBrainsApps(): LaunchableTool[] {
+  return Object.entries(JETBRAINS).flatMap(([id, name]) => {
+    const app = [`${name}.app`, `${name} Ultimate.app`, `${name} CE.app`].map(macApp).find((found) => found !== null)
+    return app ? [{ id: `jetbrains-${id}`, name, command: OPEN, args: openWith(app) }] : []
+  })
+}
+
 /** IDEs installed with JetBrains Toolbox, one per launch script (idea, webstorm, idea1 for a second IntelliJ…). */
 function jetBrainsTools(): LaunchableTool[] {
+  if (appStore) return jetBrainsApps()
   const folder = toolboxScripts()
   let files: string[]
   try {
@@ -591,6 +606,16 @@ const noToolMessage = (kind: 'diff' | 'merge'): string =>
   `No ${kind} tool is set up. Pick one in Settings → Tools, or set one with: git config --global ${kind}.tool <name>`
 
 /**
+ * git difftool and mergetool start the tool themselves, so in the App Store version it would run
+ * inside GitLantern's sandbox, where none of them work (the interface doesn't offer them there).
+ */
+function assertToolsAllowed(): void {
+  if (appStore) {
+    throw new Error('The App Store version of GitLantern can’t start other diff and merge tools. Use its own diff and conflict views instead.')
+  }
+}
+
+/**
  * Without a tool in its config, git guesses one and may pick vimdiff, which would wait for a
  * terminal GitLantern doesn't have. So ask for one to be set up instead.
  */
@@ -627,6 +652,7 @@ function toolError(error: unknown, kind: 'diff' | 'merge'): unknown {
 
 /** Open one file of a diff in the user's diff tool (`git difftool`); resolves once the tool is closed. */
 export async function diffTool(repo: string, target: DiffTarget, tool: string): Promise<void> {
+  assertToolsAllowed()
   let base: string | undefined
   if (target.kind === 'commit') {
     assertHash(target.hash)
@@ -645,6 +671,7 @@ export async function diffTool(repo: string, target: DiffTarget, tool: string): 
 
 /** Resolve a conflicted file in the user's merge tool (`git mergetool`); resolves once the tool is closed. */
 export async function mergeTool(repo: string, file: string, tool: string): Promise<void> {
+  assertToolsAllowed()
   insideRepo(repo, file)
   const args = ['mergetool', '--no-prompt', ...toolArgs(tool), '--', file]
   if (!tool) await requireConfiguredTool(repo, 'merge')

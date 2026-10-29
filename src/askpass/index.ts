@@ -14,7 +14,9 @@ if (!address || !token) {
 }
 
 let reply = ''
-const socket = createConnection(address)
+// A Unix socket or named pipe, or a port on this computer when the app's socket path would be too long.
+const port = /^127\.0\.0\.1:(\d+)$/.exec(address)?.[1]
+const socket = port ? createConnection(Number(port), '127.0.0.1') : createConnection(address)
 socket.setEncoding('utf8')
 socket.on('connect', () => socket.write(`${JSON.stringify({ token, prompt })}\n`))
 socket.on('data', (chunk: string) => {

@@ -263,6 +263,29 @@ export async function identity(repo: string): Promise<{ local: Partial<GitIdenti
   }
 }
 
+/**
+ * Take the name and email from another Git config file (the user's ~/.gitconfig, which the Mac App
+ * Store build can't read on its own) into the global config. Returns what was copied.
+ */
+export async function importIdentity(file: string): Promise<{ userName?: string; userEmail?: string }> {
+  // A copy of it is read: git runs in the app's sandbox, and gets no further than the app itself.
+  assertAbsolute(file)
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'gl-'))
+  const copy = path.join(dir, 'gitconfig')
+  try {
+    await fs.copyFile(file, copy)
+    const read = async (key: string): Promise<string | undefined> =>
+      (await runGit(['config', '--file', copy, '--get', key], { cwd: dir, allowedExitCodes: [0, 1] })).stdout.trim() || undefined
+    const [userName, userEmail] = await Promise.all([read('user.name'), read('user.email')])
+    if (!userName && !userEmail) throw new Error(`${path.basename(file)} has no user.name or user.email in it.`)
+    if (userName) await setConfig(null, 'user.name', userName)
+    if (userEmail) await setConfig(null, 'user.email', userEmail)
+    return { ...(userName ? { userName } : {}), ...(userEmail ? { userEmail } : {}) }
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true })
+  }
+}
+
 const CONFIG_KEYS: readonly GitConfigKey[] = ['user.name', 'user.email', 'commit.gpgsign', 'tag.gpgsign']
 
 /** Change one setting for a repository, or globally when `repo` is null. A null value removes it. */

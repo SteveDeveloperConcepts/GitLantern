@@ -729,6 +729,11 @@ export type IpcResult<T> = { ok: true; value: T } | { ok: false; error: string }
 
 /** The API the preload script exposes to the renderer as `window.api`. */
 export interface GitLanternApi {
+  /**
+   * The Mac App Store build, inside Apple's App Sandbox: its Git is built in, other diff and merge
+   * tools can't run, and its SSH keys and Git settings are its own (see src/main/sandbox.ts).
+   */
+  appStore: boolean
   repo: {
     pick(): Promise<RepoInfo | null>
     open(path: string): Promise<RepoInfo>
@@ -787,6 +792,8 @@ export interface GitLanternApi {
     key(): Promise<SshKeyInfo | null>
     generate(comment: string): Promise<SshKeyInfo>
     test(host: string): Promise<ConnectionTest>
+    /** App Store version: copy the keys from a .ssh folder the user picks; null if cancelled. */
+    importKeys(): Promise<SshKeyInfo | null>
   }
   clipboard: {
     write(text: string): Promise<void>
@@ -926,6 +933,8 @@ export interface GitLanternApi {
 
     identity(repo: string): Promise<{ local: Partial<GitIdentity>; global: GitIdentity }>
     setConfig(repo: string | null, key: GitConfigKey, value: string | null): Promise<void>
+    /** App Store version: copy the name and email from a Git config file the user picks; null if cancelled. */
+    importIdentity(): Promise<{ userName?: string; userEmail?: string } | null>
   }
   settings: {
     get(): Promise<UserSettings>

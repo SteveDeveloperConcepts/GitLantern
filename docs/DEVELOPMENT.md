@@ -19,7 +19,9 @@ The first `yarn dev` downloads the Electron binary.
 | `yarn dist:win` / `dist:mac` / `dist:linux` | Installers via electron-builder (NSIS / DMG / AppImage and .deb) into `dist/`. Build each on its own system. |
 | `yarn screenshots` | Fresh `docs/screenshots/` from demo repositories (run `yarn build` first; see below) |
 | `yarn dist:msstore` / `dist:msstore-test` | Microsoft Store packages (AppX), or an unsigned one to install locally |
-| `yarn dist:mas` / `dist:mas-dev` | Mac App Store package, or a development-signed sandboxed app |
+| `yarn xcode` | Open `macos/GitLantern.xcodeproj`, which builds, runs and archives the Mac App Store version in Xcode |
+| `yarn dist:mas` / `dist:mas-dev` | The Mac App Store package without Xcode, or a development-signed sandboxed app |
+| `yarn mas:git` | Build the Git that the Mac App Store version carries into `build/mas-git/` (Xcode and the `dist:mas` commands run it) |
 | `yarn release <version> "<what changed>" …` | Raise the version, tag and push: the Release workflow publishes it on GitHub |
 
 Store setup, signing and submission are in [RELEASING.md](RELEASING.md).
@@ -80,8 +82,13 @@ test/                   integration tests against real temporary repositories
 resources/askpass.cmd   askpass trampoline shipped with packaged Windows builds
 build/                  app icon, Store tile images (appx/), Mac App Store entitlements, and
                         adhoc-mac.yml (Mac builds without a certificate)
-scripts/                `yarn release`, store-build preflight check, icon generator, `yarn screenshots`
-.github/workflows/      release.yml: a pushed v* tag builds the installers and publishes a GitHub release
+scripts/                `yarn release`, store-build preflight check, icon generator, `yarn screenshots`,
+                        build-mas-git.sh (the App Store version's Git)
+macos/                  GitLantern.xcodeproj, which builds the App Store version in Xcode: build-electron.sh
+                        makes the Electron app, embed-electron.sh puts it in Xcode's app and signs it
+.github/workflows/      release.yml: a pushed v* tag builds the installers and publishes a GitHub release;
+                        mas-git.yml: builds the App Store version's Git, runs the tests with it, and
+                        archives the app with Xcode (unsigned)
 ```
 
 **Git.** Every operation shells out to the `git` CLI with machine-readable flags (`--porcelain=v2 -z`,
@@ -272,8 +279,9 @@ every IPC argument.
 
 - macOS: written to be cross-platform but only exercised on Windows so far. The DMG notarises when
   the `APPLE_*` variables in RELEASING.md are set.
-- Mac App Store: the `mas` build signs and packages, but the app isn't sandbox-ready (no bundled Git,
-  no security-scoped bookmarks, `~/.gitconfig` and `~/.ssh` hidden). Details in RELEASING.md.
+- Mac App Store: the sandboxed build (bundled Git, security-scoped bookmarks, its own `.ssh` and
+  `.gitconfig`, `src/main/sandbox.ts`) hasn't been run through App Review yet. How it differs is in
+  RELEASING.md.
 - Windows: Git must be installed. Bundling portable MinGit under `resources/` would make the app
   self-contained.
 - Don't disable Electron's `RunAsNode` fuse: the askpass helper depends on it. Replacing the helper

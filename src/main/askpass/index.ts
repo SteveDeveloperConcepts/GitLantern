@@ -1,9 +1,11 @@
 import { randomUUID } from 'node:crypto'
+import fs from 'node:fs'
 import path from 'node:path'
 import { app, type BrowserWindow } from 'electron'
 import { Events } from '../../shared/ipc'
 import type { AskPassAnswer, AskPassRequest } from '../../shared/types'
 import type { AccountStore } from '../accounts/store'
+import { appStore } from '../sandbox'
 import type { SecretStore } from '../secrets'
 import { parseCredentialPrompt } from './prompts'
 import { startAskPassServer } from './server'
@@ -23,6 +25,18 @@ export interface AskPass {
 /** Inside a packaged app, git can't read files from the asar archive. */
 function unpacked(file: string): string {
   return file.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`)
+}
+
+/**
+ * The program that runs the helper as plain Node. In the Mac App Store build it's Electron's helper
+ * app, which is signed to inherit the App Sandbox: the app's own binary would try to start a sandbox
+ * of its own, and macOS stops a sandboxed program's child that does.
+ */
+function nodeRunner(): string {
+  if (!appStore) return process.execPath
+  const name = path.basename(process.execPath)
+  const helper = path.resolve(process.execPath, '../../Frameworks', `${name} Helper.app`, 'Contents', 'MacOS', `${name} Helper`)
+  return fs.existsSync(helper) ? helper : process.execPath
 }
 
 export async function setupAskPass(options: {
@@ -72,7 +86,7 @@ export async function setupAskPass(options: {
 
   const env = askPassEnv({
     trampoline: trampolinePath(app.getPath('userData')),
-    nodePath: process.execPath,
+    nodePath: nodeRunner(),
     scriptPath: unpacked(path.join(__dirname, 'askpass.js')),
     address: server.address,
     token: server.token

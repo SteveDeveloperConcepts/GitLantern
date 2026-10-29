@@ -1,2 +1,7 @@
 # The askpass trampoline must keep Windows line endings on every checkout.
 *.cmd text eol=crlf
+# Shell scripts run on macOS and Linux, so they keep Unix line endings on every checkout.
+*.sh text eol=lf
+# Xcode writes its project with Unix line endings; keep it that way when it's edited elsewhere.
+*.pbxproj text eol=lf
+*.xcscheme text eol=lf

@@ -1,4 +1,5 @@
 // Checks the setup for a store build before the long build starts. Usage: node scripts/store-check.mjs msstore|mas|mas-dev
+import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -26,14 +27,31 @@ if (target === 'msstore') {
     )
   }
 } else if (target === 'mas' || target === 'mas-dev') {
-  if (process.platform !== 'darwin') problems.push('Mac App Store builds must be made on a Mac with your Apple certificates in the keychain.')
+  if (process.platform !== 'darwin') {
+    problems.push('Mac App Store builds must be made on a Mac with your Apple certificates in the keychain.')
+  } else {
+    if (spawnSync('xcrun', ['--find', 'clang'], { encoding: 'utf8' }).status !== 0) {
+      problems.push("Xcode or its command line tools aren't installed (the bundled Git is compiled): run xcode-select --install.")
+    }
+    // Signing certificates in the keychain. Their names have changed over the years, so a missing one is a warning.
+    const identities = spawnSync('security', ['find-identity', '-v'], { encoding: 'utf8' }).stdout ?? ''
+    const needed =
+      target === 'mas'
+        ? [
+            ['Apple Distribution', /"(Apple Distribution|3rd Party Mac Developer Application):/],
+            ['Mac Installer Distribution', /"(3rd Party Mac Developer Installer|Mac Installer Distribution):/]
+          ]
+        : [['Apple Development', /"(Apple Development|Mac Developer):/]]
+    for (const [name, pattern] of needed) {
+      if (!pattern.test(identities)) {
+        warnings.push(`No "${name}" certificate found in your keychain. Add it in Xcode → Settings → Accounts → Manage Certificates (${guide}).`)
+      }
+    }
+  }
   const profile = target === 'mas' ? 'build/embedded.provisionprofile' : 'build/development.provisionprofile'
   if (!fs.existsSync(path.join(root, profile))) {
     problems.push(`Missing ${profile}. Download it from developer.apple.com → Certificates, IDs & Profiles → Profiles (${guide}).`)
   }
-  warnings.push(
-    `GitLantern can't run Git inside Apple's App Sandbox yet, so this build won't pass App Review.\n  See "Mac App Store" in ${guide} for what's missing.`
-  )
 } else {
   console.error('Usage: node scripts/store-check.mjs msstore|mas|mas-dev')
   process.exit(2)

@@ -13,6 +13,14 @@ function isFile(candidate: string): boolean {
   }
 }
 
+/**
+ * The Git inside the Mac App Store build (scripts/build-mas-git.sh). It's the one git there: the
+ * App Sandbox keeps every other copy out of reach, and Apple's /usr/bin/git refuses to run in it.
+ */
+export function bundledGitPath(): string {
+  return path.join(process.resourcesPath, 'git', 'libexec', 'git-core', 'git')
+}
+
 /** Find a git executable: an explicit override, then PATH, then common install locations. */
 export function resolveGitPath(override?: string): string {
   if (override && isFile(override)) return override

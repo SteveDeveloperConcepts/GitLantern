@@ -83,9 +83,18 @@ mas:
   # The App Sandbox replaces the hardened runtime; `mac.hardenedRuntime` would otherwise carry over.
   hardenedRuntime: false
   entitlements: build/entitlements.mas.plist
+  # Everything else in the app gets these, the bundled git and git-lfs included.
   entitlementsInherit: build/entitlements.mas.inherit.plist
   # The "Mac App Store Connect" distribution profile from developer.apple.com.
   provisioningProfile: build/embedded.provisionprofile
+  # The sandboxed app runs its own Git, built by scripts/build-mas-git.sh (src/main/git/resolveGit.ts).
+  extraResources:
+    - from: build/mas-git
+      to: git
+  extendInfo:
+    # Only the standard encryption of HTTPS and SSH, which is exempt: App Store Connect doesn't ask about
+    # export compliance for each build.
+    ITSAppUsesNonExemptEncryption: false
   artifactName: ${productName}-${version}-mas.${ext}
 masDev:
   # A "macOS App Development" profile that includes this Mac.

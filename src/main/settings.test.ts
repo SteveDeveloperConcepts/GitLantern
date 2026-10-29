@@ -61,6 +61,17 @@ describe('settings from the Settings screen', () => {
     expect(reloaded.knownRepos().has('C:\\code\\repo0')).toBe(true)
     expect(reloaded.knownRepos().size).toBe(15)
   })
+
+  it('keeps the latest 200 folder bookmarks, a folder picked again counting as new', () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gitlantern-settings-')), 'settings.json')
+    const settings = new Settings(file)
+    for (let n = 0; n < 205; n++) settings.setBookmark(`/Users/me/code${n}`, `bookmark${n}`)
+    settings.setBookmark('/Users/me/code10', 'again')
+    const bookmarks = Object.entries(new Settings(file).bookmarks())
+    expect(bookmarks).toHaveLength(200)
+    expect(bookmarks[0]).toEqual(['/Users/me/code5', 'bookmark5'])
+    expect(bookmarks.at(-1)).toEqual(['/Users/me/code10', 'again'])
+  })
 })
 
 describe('settings from before the rename', () => {

@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- Electron's helper apps and frameworks inside the Mac App Store build: they run in the app's sandbox. -->
+<!--
+  Everything else inside the Mac App Store build: Electron's helper apps and frameworks, and the bundled
+  git and git-lfs. They run in the app's sandbox, with its access to the folders the user picked.
+-->
 <plist version="1.0">
   <dict>
     <key>com.apple.security.app-sandbox</key>

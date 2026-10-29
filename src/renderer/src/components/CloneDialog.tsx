@@ -210,6 +210,9 @@ export function CloneDialog({ onClose, onCloned, onManageAccounts }: Props) {
               value={folder}
               onChange={(event) => setFolder(event.target.value)}
               disabled={cloning}
+              // The App Store version may only write in a folder picked with Browse….
+              readOnly={api.appStore}
+              placeholder={api.appStore ? 'Choose a folder with Browse…' : undefined}
             />
             <button
               type="button"

@@ -5,3 +5,7 @@ dist/
 .DS_Store
 # Apple provisioning profiles are tied to your developer account.
 build/*.provisionprofile
+# The Git the Mac App Store build carries, made by scripts/build-mas-git.sh.
+build/mas-git/
+# Xcode's per-user state (window layout, breakpoints), next to the shared project in macos/.
+xcuserdata/

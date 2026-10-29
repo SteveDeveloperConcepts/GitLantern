@@ -206,21 +206,32 @@ function GitSection({ settings, onChange, repoPath }: SectionProps & { repoPath:
       .setConfig(scope === 'global' ? null : repoPath, key, value)
       .then(reload)
       .catch((err: unknown) => setError(errorMessage(err)))
+  const importIdentity = () =>
+    void api.git
+      .importIdentity()
+      .then(reload)
+      .catch((err: unknown) => setError(errorMessage(err)))
 
   return (
     <>
       <h3>Git</h3>
-      <Row label="Git program" hint="Takes effect after a restart.">
-        <span className="mono">{settings.gitPath || 'The git on your PATH'}</span>
-        <span className="row-wrap">
-          <button onClick={() => void api.settings.chooseGit(false).catch((err: unknown) => setError(errorMessage(err)))}>Choose…</button>
-          {settings.gitPath && (
-            <button className="link" onClick={() => void api.settings.chooseGit(true)}>
-              Use the one on PATH
-            </button>
-          )}
-        </span>
-      </Row>
+      {api.appStore ? (
+        <Row label="Git program" hint="This version of GitLantern comes with its own Git and Git LFS.">
+          <span>Built in</span>
+        </Row>
+      ) : (
+        <Row label="Git program" hint="Takes effect after a restart.">
+          <span className="mono">{settings.gitPath || 'The git on your PATH'}</span>
+          <span className="row-wrap">
+            <button onClick={() => void api.settings.chooseGit(false).catch((err: unknown) => setError(errorMessage(err)))}>Choose…</button>
+            {settings.gitPath && (
+              <button className="link" onClick={() => void api.settings.chooseGit(true)}>
+                Use the one on PATH
+              </button>
+            )}
+          </span>
+        </Row>
+      )}
       <Row label="Fetch automatically" hint="Fetches every remote in the background while a repository is open.">
         <select value={settings.autoFetchMinutes} onChange={(event) => onChange({ autoFetchMinutes: Number(event.target.value) })}>
           <option value={0}>Off</option>
@@ -236,6 +247,11 @@ function GitSection({ settings, onChange, repoPath }: SectionProps & { repoPath:
       {identity && (
         <>
           <h4>Who commits</h4>
+          {api.appStore && (
+            <Row label="From your Git settings" hint="macOS keeps App Store apps out of ~/.gitconfig, so GitLantern’s Git has settings of its own.">
+              <button onClick={importIdentity}>Copy name and email from ~/.gitconfig…</button>
+            </Row>
+          )}
           <Row label="Name" hint="Everywhere (global). A repository can use its own below.">
             <TextSetting value={identity.global.userName} placeholder="Your Name" onSave={(value) => save('global', 'user.name', value.trim() || null)} />
           </Row>
@@ -420,13 +436,18 @@ function Tools({ settings, onChange }: SectionProps) {
           ))}
         </select>
       </Row>
-      <Row label="Diff tool" hint="Passed to git difftool --tool. Empty: Git’s own diff.tool setting.">
-        <TextSetting value={settings.diffTool} placeholder="vscode, meld, bc…" onSave={(diffTool) => onChange({ diffTool: diffTool.trim() })} />
-      </Row>
-      <Row label="Merge tool" hint="Passed to git mergetool --tool. Empty: Git’s own merge.tool setting.">
-        <TextSetting value={settings.mergeTool} placeholder="vscode, kdiff3, p4merge…" onSave={(mergeTool) => onChange({ mergeTool: mergeTool.trim() })} />
-      </Row>
-      <p className="hint">Tools Git knows by name: {DIFF_TOOLS.join(', ')}. Others need a difftool.&lt;name&gt;.cmd entry in your Git config.</p>
+      {/* git difftool and mergetool would start the tool inside the App Sandbox, where none of them work. */}
+      {!api.appStore && (
+        <>
+          <Row label="Diff tool" hint="Passed to git difftool --tool. Empty: Git’s own diff.tool setting.">
+            <TextSetting value={settings.diffTool} placeholder="vscode, meld, bc…" onSave={(diffTool) => onChange({ diffTool: diffTool.trim() })} />
+          </Row>
+          <Row label="Merge tool" hint="Passed to git mergetool --tool. Empty: Git’s own merge.tool setting.">
+            <TextSetting value={settings.mergeTool} placeholder="vscode, kdiff3, p4merge…" onSave={(mergeTool) => onChange({ mergeTool: mergeTool.trim() })} />
+          </Row>
+          <p className="hint">Tools Git knows by name: {DIFF_TOOLS.join(', ')}. Others need a difftool.&lt;name&gt;.cmd entry in your Git config.</p>
+        </>
+      )}
     </>
   )
 }
@@ -442,6 +463,12 @@ function Actions({ settings, onChange }: SectionProps) {
         <span className="mono">{'${SHA}'}</span> the commit, <span className="mono">{'${BRANCH}'}</span> the branch and{' '}
         <span className="mono">{'${FILE}'}</span> the file. Output is shown when it finishes.
       </p>
+      {api.appStore && (
+        <p className="hint">
+          In this version they run inside GitLantern’s App Sandbox: they can use the repository and the programs that come with macOS, but
+          programs that need more of your Mac may not work.
+        </p>
+      )}
       {actions.map((action) => (
         <div key={action.id} className="list-card">
           <div className="field-grid">

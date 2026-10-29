@@ -1,0 +1,63 @@
+# The Mac App Store version, on a Mac: builds its Git (scripts/build-mas-git.sh, which checks it as it goes),
+# runs the whole test suite with that git as the one on PATH, then archives the app with Xcode
+# (macos/GitLantern.xcodeproj), unsigned. Runs when any of those change, or by hand from the Actions tab.
+# See "Mac App Store" in docs/RELEASING.md.
+name: Mac App Store build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - scripts/build-mas-git.sh
+      - macos/**
+      - electron-builder.yml
+      - build/entitlements.mas*.plist
+      - .github/workflows/mas-git.yml
+  pull_request:
+    paths:
+      - scripts/build-mas-git.sh
+      - macos/**
+      - electron-builder.yml
+      - build/entitlements.mas*.plist
+      - .github/workflows/mas-git.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, test and archive (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+
+      - name: Build the bundled Git
+        run: bash scripts/build-mas-git.sh
+
+      # The askpass test runs the built helper, so build first.
+      - run: yarn build
+      - name: Run the tests with the bundled Git
+        run: |
+          export PATH="$PWD/build/mas-git/libexec/git-core:$PATH"
+          test "$(command -v git)" = "$PWD/build/mas-git/libexec/git-core/git"
+          git --version
+          yarn test
+
+      # Product → Archive, as on your Mac, but without a certificate.
+      - name: Archive with Xcode
+        run: |
+          xcodebuild archive -project macos/GitLantern.xcodeproj -scheme GitLantern \
+            -archivePath "$RUNNER_TEMP/GitLantern.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY= PROVISIONING_PROFILE_SPECIFIER=
+          app="$RUNNER_TEMP/GitLantern.xcarchive/Products/Applications/GitLantern.app"
+          test -x "$app/Contents/MacOS/GitLantern"
+          test -x "$app/Contents/Resources/git/libexec/git-core/git"
+          lipo -archs "$app/Contents/MacOS/GitLantern" | grep -q arm64
+          lipo -archs "$app/Contents/MacOS/GitLantern" | grep -q x86_64
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :ElectronTeamID' "$app/Contents/Info.plist"

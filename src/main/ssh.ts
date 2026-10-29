@@ -4,11 +4,34 @@ import os from 'node:os'
 import path from 'node:path'
 import { hostName } from '../shared/remoteUrl'
 import type { ConnectionTest, SshKeyInfo } from '../shared/types'
+import { appStore } from './sandbox'
 
 const KEY_NAMES = ['id_ed25519', 'id_ecdsa', 'id_rsa']
 const HOST = /^[a-z0-9.-]+(:\d{1,5})?$/i
 
+// In the Mac App Store build this is the .ssh folder inside GitLantern's container.
 const sshDir = (): string => path.join(os.homedir(), '.ssh')
+
+/**
+ * Options that point ssh at GitLantern's own keys and known_hosts, for the Mac App Store build (none
+ * elsewhere). ssh finds the home folder in the user database rather than $HOME, so in the App Sandbox
+ * it would look in the real ~/.ssh, which the sandbox keeps it out of.
+ */
+export function sandboxSshArgs(): string[] {
+  if (!appStore) return []
+  fs.mkdirSync(sshDir(), { recursive: true, mode: 0o700 })
+  // ssh splits these values on spaces unless they're quoted.
+  const option = (name: string, file: string): string[] => ['-o', `${name}="${file}"`]
+  const keys = KEY_NAMES.map((name) => path.join(sshDir(), name)).filter((file) => fs.existsSync(file))
+  return [...option('UserKnownHostsFile', path.join(sshDir(), 'known_hosts')), ...keys.flatMap((key) => option('IdentityFile', key))]
+}
+
+const shellQuote = (arg: string): string => `'${arg.replace(/'/g, `'\\''`)}'`
+
+/** Environment that has git's ssh use those same options. Read for each command, so a new key counts at once. */
+export function sshEnv(): Record<string, string> {
+  return appStore ? { GIT_SSH_COMMAND: ['ssh', ...sandboxSshArgs()].map(shellQuote).join(' ') } : {}
+}
 
 const SSH2_HEADER = '---- BEGIN SSH2 PUBLIC KEY ----'
 
@@ -91,6 +114,33 @@ export async function generateKey(sshKeygen: string, comment: string): Promise<S
   return key
 }
 
+/**
+ * Mac App Store build: copy the keys (and known_hosts) in a .ssh folder the user picked into
+ * GitLantern's own, which its ssh uses. Files GitLantern already has are kept.
+ */
+export async function importKeys(folder: string, sshKeygen: string): Promise<SshKeyInfo> {
+  fs.mkdirSync(sshDir(), { recursive: true, mode: 0o700 })
+  const copy = (name: string, mode: number): boolean => {
+    const from = path.join(folder, name)
+    const to = path.join(sshDir(), name)
+    if (!fs.existsSync(from) || fs.existsSync(to)) return false
+    fs.copyFileSync(from, to)
+    fs.chmodSync(to, mode)
+    return true
+  }
+  for (const name of KEY_NAMES) {
+    if (!copy(name, 0o600)) continue
+    if (copy(`${name}.pub`, 0o644)) continue
+    // No public key next to it: work it out from the private one (only possible without a passphrase).
+    const { code, output } = await run(sshKeygen, ['-y', '-f', path.join(sshDir(), name)], {}, 15_000)
+    if (code === 0) fs.writeFileSync(path.join(sshDir(), `${name}.pub`), `${output.trim()}\n`, { mode: 0o644 })
+  }
+  copy('known_hosts', 0o644)
+  const key = await loadKey(sshKeygen)
+  if (!key) throw new Error('There’s no id_ed25519, id_ecdsa or id_rsa key in that folder that GitLantern could use.')
+  return key
+}
+
 const SUCCESS = /successfully authenticated|welcome to gitlab|authenticated via ssh key|shell access is not supported|does not provide shell access/i
 
 /** `ssh -T git@host`: services answer with a greeting (and often a non-zero exit) when the key is accepted. */
@@ -98,7 +148,7 @@ export async function testSsh(ssh: string, host: string, env: Record<string, str
   if (!HOST.test(host)) throw new Error(`Not a host name: ${host}`)
   const port = /:(\d+)$/.exec(host)?.[1]
   const args = ['-T', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=15', ...(port ? ['-p', port] : [])]
-  const { output } = await run(ssh, [...args, `git@${hostName(host)}`], env, 30_000)
+  const { output } = await run(ssh, [...sandboxSshArgs(), ...args, `git@${hostName(host)}`], env, 30_000)
   const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
   const greeting = lines.find((line) => SUCCESS.test(line))
   if (greeting) return { ok: true, message: greeting.replace(/^remote:\s*/i, '') }

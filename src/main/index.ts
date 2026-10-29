@@ -2,17 +2,20 @@ import path from 'node:path'
 import { app, BrowserWindow, nativeTheme, shell } from 'electron'
 import { AccountStore } from './accounts/store'
 import { setupAskPass, type AskPass } from './askpass'
+import { FolderAccess } from './folderAccess'
 import { setAccountHosts } from './git/commands'
-import { resolveGitPath } from './git/resolveGit'
+import { bundledGitPath, resolveGitPath } from './git/resolveGit'
 import { configureGit } from './git/runGit'
 import { registerIpc } from './ipc'
+import { appStore } from './sandbox'
 import { SecretStore } from './secrets'
 import { adoptOldSettings, Settings } from './settings'
-import { resolveSshTool } from './ssh'
+import { resolveSshTool, sshEnv } from './ssh'
 import { setupUpdater } from './updater'
 
 let mainWindow: BrowserWindow | null = null
 let askpass: AskPass | undefined
+let folders: FolderAccess | undefined
 
 /** `zoom`: the interface size from Settings, in percent. */
 function createWindow(zoom: number): void {
@@ -29,7 +32,9 @@ function createWindow(zoom: number): void {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
-      spellcheck: false
+      spellcheck: false,
+      // Tells the preload script (window.api.appStore) that this is the Mac App Store build.
+      additionalArguments: appStore ? ['--gitlantern-app-store'] : []
     }
   })
 
@@ -69,11 +74,13 @@ if (!app.requestSingleInstanceLock()) {
     const settings = new Settings(path.join(userData, 'settings.json'))
     const secrets = new SecretStore(path.join(userData, 'secrets.json'))
     const accounts = new AccountStore(path.join(userData, 'accounts.json'), secrets, () => settings.get().oauthClients ?? {})
+    folders = new FolderAccess(settings)
+    folders.openAll()
 
     askpass = await setupAskPass({ secrets, accounts, getWindow: () => mainWindow })
     const askpassEnv = askpass.env
-    const gitPath = resolveGitPath(settings.get().gitPath)
-    configureGit({ gitPath, env: () => askpassEnv })
+    const gitPath = appStore ? bundledGitPath() : resolveGitPath(settings.get().gitPath)
+    configureGit({ gitPath, env: () => ({ ...askpassEnv, ...sshEnv() }) })
     setAccountHosts(() => accounts.hosts())
 
     registerIpc({
@@ -81,6 +88,7 @@ if (!app.requestSingleInstanceLock()) {
       secrets,
       accounts,
       askpass,
+      folders,
       updater: setupUpdater(() => mainWindow),
       sshTools: { ssh: resolveSshTool('ssh', gitPath), keygen: resolveSshTool('ssh-keygen', gitPath) },
       getWindow: () => mainWindow
@@ -98,5 +106,6 @@ if (!app.requestSingleInstanceLock()) {
 
   app.on('will-quit', () => {
     void askpass?.close()
+    folders?.close()
   })
 }

@@ -309,6 +309,7 @@ own settings live here:
 | Windows | `%APPDATA%\GitLantern` |
 | Windows, installed from the Microsoft Store | `%LOCALAPPDATA%\Packages\<package name>\LocalCache\Roaming\GitLantern` |
 | macOS | `~/Library/Application Support/GitLantern` |
+| macOS, installed from the Mac App Store | `~/Library/Containers/com.developerconcepts.gitlantern/Data/Library/Application Support/GitLantern` |
 | Linux | `~/.config/GitLantern` |
 
 - `settings.json`: your recent repositories and open tabs, the last clone folder, an optional `gitPath`

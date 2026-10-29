@@ -13,7 +13,7 @@ export interface AskPassWireRequest {
 export type AskPassWireReply = { ok: true; value: string } | { ok: false }
 
 export interface AskPassServer {
-  /** Named pipe (Windows) or Unix socket path the helper connects to. */
+  /** Named pipe (Windows), Unix socket path, or `127.0.0.1:<port>`: what the helper connects to. */
   address: string
   /** Per-run secret the helper must present, so other local processes can't fetch answers. */
   token: string
@@ -21,6 +21,12 @@ export interface AskPassServer {
 }
 
 const MAX_REQUEST_BYTES = 64 * 1024
+/**
+ * Longest Unix socket path macOS takes (104 bytes with the terminating zero; Linux allows 107). In the
+ * Mac App Store build the temporary folder is deep inside the app's container, which is why the names
+ * below are short.
+ */
+const MAX_SOCKET_PATH = 103
 
 function sameToken(a: string, b: string): boolean {
   const left = Buffer.from(a)
@@ -28,22 +34,31 @@ function sameToken(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right)
 }
 
+/** Whether `address` is short enough to listen on as a Unix socket. */
+export function fitsSocketPath(address: string): boolean {
+  return Buffer.byteLength(address) <= MAX_SOCKET_PATH
+}
+
 /**
  * Listen for prompts from the askpass helper. `onPrompt` resolves to the answer,
- * or null to cancel (git then fails the operation).
+ * or null to cancel (git then fails the operation). Outside Windows it's a Unix socket in a private
+ * folder. When that folder's path is too long for one, or `tcp` is set (tests), it's a port on
+ * 127.0.0.1 instead: reachable by other programs on this computer, which the token keeps out.
  */
 export async function startAskPassServer(options: {
   onPrompt(prompt: string): Promise<string | null>
+  tcp?: boolean
 }): Promise<AskPassServer> {
   const token = randomBytes(32).toString('hex')
   let socketDir: string | undefined
-  let address: string
-  if (process.platform === 'win32') {
+  let address: string | null = null
+  if (!options.tcp && process.platform === 'win32') {
     address = `\\\\.\\pipe\\gitlantern-askpass-${process.pid}-${randomBytes(6).toString('hex')}`
-  } else {
-    socketDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitlantern-'))
+  } else if (!options.tcp) {
+    socketDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gl-'))
     fs.chmodSync(socketDir, 0o700)
-    address = path.join(socketDir, 'askpass.sock')
+    const socket = path.join(socketDir, 's')
+    if (fitsSocketPath(socket)) address = socket
   }
 
   const server = net.createServer((socket) => {
@@ -79,11 +94,14 @@ export async function startAskPassServer(options: {
 
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
-    server.listen(address, () => {
+    const listening = (): void => {
       server.off('error', reject)
       resolve()
-    })
+    }
+    if (address) server.listen(address, listening)
+    else server.listen(0, '127.0.0.1', listening)
   })
+  address ??= `127.0.0.1:${(server.address() as net.AddressInfo).port}`
 
   return {
     address,

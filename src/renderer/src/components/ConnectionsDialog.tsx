@@ -316,6 +316,17 @@ function SshKeyCard({ accountHosts }: { accountHosts: string[] }) {
     }
   }
 
+  const importKeys = async () => {
+    try {
+      const imported = await api.ssh.importKeys()
+      if (!imported) return
+      setKey(imported)
+      setNotice('GitLantern uses this key now.')
+    } catch (error) {
+      setNotice(errorMessage(error))
+    }
+  }
+
   const test = async () => {
     setResult('running')
     try {
@@ -366,12 +377,22 @@ function SshKeyCard({ accountHosts }: { accountHosts: string[] }) {
       ) : (
         key === null && (
           <div className="row-wrap">
+            {api.appStore && (
+              <button onClick={() => void importKeys()}>
+                <Icon name="key" size={15} /> Use the keys in ~/.ssh…
+              </button>
+            )}
             <button onClick={() => void generate()}>
               <Icon name="key" size={15} /> Create an SSH key
             </button>
-            <span className="dim">Saved as ~/.ssh/id_ed25519, without a passphrase.</span>
+            <span className="dim">
+              {api.appStore ? 'A new key is kept in GitLantern’s own folder, without a passphrase.' : 'Saved as ~/.ssh/id_ed25519, without a passphrase.'}
+            </span>
           </div>
         )
+      )}
+      {api.appStore && key === null && (
+        <span className="dim">macOS keeps App Store apps out of ~/.ssh, so GitLantern keeps a copy of the keys it uses.</span>
       )}
       {result === 'running' && (
         <span className="dim">

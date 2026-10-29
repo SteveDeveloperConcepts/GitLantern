@@ -11,10 +11,17 @@
     <!-- fetch / pull / push / clone, and the Git service APIs. -->
     <key>com.apple.security.network.client</key>
     <true/>
+    <!--
+      Connections from this Mac only: the browser coming back from a GitLab or Gitea sign-in to
+      http://127.0.0.1 (src/main/accounts/oauth.ts), and git's askpass helper when the sandbox's folder
+      path is too long for a socket (src/main/askpass/server.ts).
+    -->
+    <key>com.apple.security.network.server</key>
+    <true/>
     <!-- Repositories and clone folders the user picks in the open dialog. -->
     <key>com.apple.security.files.user-selected.read-write</key>
     <true/>
-    <!-- Reopening those folders after a restart (security-scoped bookmarks). -->
+    <!-- Reopening those folders after a restart (security-scoped bookmarks, src/main/folderAccess.ts). -->
     <key>com.apple.security.files.bookmarks.app-scope</key>
     <true/>
   </dict>

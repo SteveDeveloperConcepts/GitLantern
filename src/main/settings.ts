@@ -32,10 +32,13 @@ export interface AppSettings {
   approvedActions?: string[]
   /** Every repository opened through a dialog, a clone or Recent; written by the main process only. */
   knownRepos?: string[]
+  /** Mac App Store build: security-scoped bookmarks of the folders picked in dialogs, oldest first (folderAccess.ts). */
+  bookmarks?: Record<string, string>
 }
 
 const MAX_RECENT = 12
 const MAX_KNOWN = 500
+const MAX_BOOKMARKS = 200
 
 export const DEFAULT_AI: AiSettings = { provider: 'anthropic', endpoint: DEFAULT_ENDPOINT, model: DEFAULT_MODELS.anthropic, instructions: '' }
 
@@ -249,6 +252,17 @@ export class Settings {
     this.save()
   }
 
+  bookmarks(): Readonly<Record<string, string>> {
+    return this.data.bookmarks ?? {}
+  }
+
+  /** Keep a folder's bookmark, as the newest; only the last few hundred are kept. */
+  setBookmark(folder: string, bookmark: string): void {
+    const rest = Object.entries(this.data.bookmarks ?? {}).filter(([kept]) => kept !== folder)
+    this.data = { ...this.data, bookmarks: Object.fromEntries([...rest, [folder, bookmark]].slice(-MAX_BOOKMARKS)) }
+    this.save()
+  }
+
   private load(): AppSettings {
     try {
       const parsed = JSON.parse(fs.readFileSync(this.file, 'utf8')) as Partial<AppSettings>
@@ -267,7 +281,8 @@ export class Settings {
         ...(Array.isArray(parsed.approvedActions)
           ? { approvedActions: parsed.approvedActions.filter((h): h is string => typeof h === 'string') }
           : {}),
-        ...(Array.isArray(parsed.knownRepos) ? { knownRepos: parsed.knownRepos.filter((p): p is string => typeof p === 'string') } : {})
+        ...(Array.isArray(parsed.knownRepos) ? { knownRepos: parsed.knownRepos.filter((p): p is string => typeof p === 'string') } : {}),
+        ...(isStringMap(parsed.bookmarks) ? { bookmarks: parsed.bookmarks } : {})
       }
     } catch {
       return { recentRepos: [] }

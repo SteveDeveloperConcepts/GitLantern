@@ -254,7 +254,8 @@ export function DiffView({ repoPath, target, busy = false, onLines, conflicts: c
               </button>
             </>
           )}
-          {!untracked && (
+          {/* The App Store version can't start other tools (see Settings → Tools). */}
+          {!untracked && !api.appStore && (
             <button className="link" onClick={external} title={conflictView ? 'Resolve in your merge tool (git mergetool)' : 'Open in your diff tool (git difftool)'}>
               {conflictView ? 'Merge tool' : 'Diff tool'}
             </button>

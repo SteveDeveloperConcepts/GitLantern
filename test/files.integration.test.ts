@@ -301,4 +301,19 @@ describe('identity and settings', () => {
     await git(repo, 'config', 'commit.template', path.join(outputFolder(), 'missing.txt'))
     expect((await files.identity(repo)).global.commitTemplate).toBe('')
   })
+
+  it('copies the name and email from another config file into the global one', async () => {
+    const repo = await repoWithBase()
+    const other = path.join(outputFolder(), '.gitconfig')
+    fs.writeFileSync(other, '[user]\n\tname = Mac User\n\temail = mac@example.com\n[core]\n\teditor = vim\n')
+    expect(await files.importIdentity(other)).toEqual({ userName: 'Mac User', userEmail: 'mac@example.com' })
+    expect((await files.identity(repo)).global).toMatchObject({ userName: 'Mac User', userEmail: 'mac@example.com' })
+    // Only those two: nothing else comes across.
+    expect(fs.readFileSync(path.join(home, 'gitconfig'), 'utf8')).not.toContain('vim')
+
+    fs.writeFileSync(other, '[core]\n\teditor = vim\n')
+    await expect(files.importIdentity(other)).rejects.toThrow('.gitconfig has no user.name or user.email in it.')
+    await files.setConfig(null, 'user.name', null)
+    await files.setConfig(null, 'user.email', null)
+  })
 })
