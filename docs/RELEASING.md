@@ -175,10 +175,11 @@ It installs for all users. Remove it afterwards with
 2. **Packages:** drag in both `.appx` files from `dist/`.
 3. **Properties:** category *Developer tools*. In **System requirements**, note that Git for Windows must be
    installed.
-4. **Store listings:** description, and at least one screenshot. The images in `docs/screenshots/`
-   work. Mention in the description that Git must be installed.
-5. **Privacy policy URL:** required, because GitLantern stores access tokens. Explain what's stored and
-   that it stays on the user's computer (see "Where your data lives" in the README).
+4. **Store listings:** the description, features, screenshots and logos in
+   [STORE-LISTING.md](STORE-LISTING.md). Make the images with
+   `yarn build && yarn screenshots --store && yarn store-images`; they're in `dist/store/microsoft-store/`.
+5. **Privacy policy URL:** required, because GitLantern stores access tokens. Use
+   [PRIVACY.md](../PRIVACY.md) on GitHub (the link is in STORE-LISTING.md).
 6. **Restricted capability:** Partner Center asks why the app uses `runFullTrust`. Every desktop app
    packaged this way declares it. A suitable answer: "Desktop Git client: runs Git and SSH on the user's
    computer."
@@ -207,10 +208,11 @@ You build, archive and upload the App Store version in **Xcode**, with `macos/Gi
   App Store variant of the Electron app with electron-builder, unsigned, into `dist/xcode/`.
 - **GitLantern** is the app Xcode builds and signs. Its build phase, `macos/embed-electron.sh`, copies the
   Electron app into it and signs everything inside with the certificate Xcode picked. Then Xcode signs
-  the app itself, with `macos/GitLantern.entitlements` and your provisioning profile.
+  the app itself, with `macos/GitLantern.entitlements` and the profile it manages.
 
-So **Product → Run** starts the sandboxed app on your Mac, and **Product → Archive** makes the archive that
-**Distribute App** uploads. Without Xcode, `yarn dist:mas` builds the same app as a signed `.pkg` for
+Xcode manages the signing (**Automatically manage signing**), with your Apple Development certificate for
+both Run and Archive. So **Product → Run** starts the sandboxed app on your Mac, and **Product → Archive**
+makes the archive that **Distribute App** re-signs for the App Store and uploads. Without Xcode, `yarn dist:mas` builds the same app as a signed `.pkg` for
 Transporter.
 
 ### How the App Store version differs
@@ -249,33 +251,28 @@ doesn't ask about export compliance for each build.
 2. Install **Xcode** from the App Store and open it once to finish installing. Its compiler builds the
    bundled Git. Install [Node.js](https://nodejs.org) and Yarn 1 too, and run `yarn install` in the project
    folder: Xcode's build runs them.
-3. **Certificates:** in Xcode, go to **Settings → Accounts**, sign in, then **Manage Certificates → +**. Add
-   **Apple Distribution** and **Apple Development** (and **Mac Installer Distribution** if you'll also use
-   `yarn dist:mas`).
+3. **Your Apple Account in Xcode:** go to **Settings → Accounts** and sign in. Xcode makes the certificates
+   and profiles it needs as it goes: an **Apple Development** certificate the first time it signs, and the
+   **Apple Distribution** certificate and App Store profile the first time you upload. That needs a role in
+   the team that can create certificates (Account Holder or Admin). Otherwise, ask someone who has one to add
+   an Apple Distribution certificate for you under **Manage Certificates → +**.
 4. **App ID:** on [developer.apple.com](https://developer.apple.com/account/resources/identifiers/list), go
-   to **Certificates, IDs & Profiles → Identifiers → +** and register an App ID with the explicit bundle ID
-   `com.developerconcepts.gitlantern` (`appId` in `electron-builder.yml`). It needs no extra capabilities.
-5. **App Store profile:** on the same site, under **Profiles → +**, create a **Mac App Store Connect**
-   profile for that App ID and your Apple Distribution certificate. Name it exactly
-   **GitLantern Mac App Store**: the project's Release configuration looks for it by that name. Then, in
-   Xcode, go to **Settings → Accounts →** your team **→ Download Manual Profiles**.
-6. **Your team in the project:** open the project with `yarn xcode` and select the **GitLantern** target.
-   - **Signing & Capabilities → Signing (Debug):** choose your **Team**. Debug signs automatically, for
-     running on your Mac.
-   - **Build Settings → All:** search for **Development Team**, expand it, and set **Release** to your team
-     as well. Release signs manually, so Signing & Capabilities has no Team menu for it: Xcode finds the
-     profile above by its name within that team. Until it's set, Signing (Release) shows Team: None and
-     the profile's name in red.
-
-   Signing (Release) should then show your team and the **Apple Distribution** certificate. This writes your
-   team ID into the project file, which is fine to commit.
-7. **App record:** in [App Store Connect](https://appstoreconnect.apple.com), go to **Apps → + → New App**.
+   to **Certificates, IDs & Profiles → Identifiers** and check that there's an App ID with the explicit
+   bundle ID `com.developerconcepts.gitlantern` (`appId` in `electron-builder.yml`). If not, register it
+   with **+**. It needs no extra capabilities.
+5. **Your team in the project:** the project file already names the team (`DEVELOPMENT_TEAM`, Developer
+   Concepts Limited). To sign with a different team, open the project with `yarn xcode`, select the
+   **GitLantern** target, and choose the team under **Signing & Capabilities → Team**. Do it for both
+   Debug and Release. Signing should then show your team and **Apple Development**, without any errors.
+6. **App record:** in [App Store Connect](https://appstoreconnect.apple.com), go to **Apps → + → New App**.
    Choose macOS, the bundle ID above, a name, a primary language and an SKU (any ID you like, such as `gitlantern`).
 
-For `yarn dist:mas` and `yarn dist:mas-dev` (without Xcode), electron-builder reads the profiles from files:
-save the App Store profile as `build/embedded.provisionprofile`, and a **macOS App Development** profile
-that includes your Mac as `build/development.provisionprofile`. Both are git-ignored, because they're tied
-to your account.
+`yarn dist:mas` and `yarn dist:mas-dev` (without Xcode) don't use Xcode's managed signing. They need an
+**Apple Distribution** and a **Mac Installer Distribution** certificate in your keychain (**Manage
+Certificates → +** in Xcode), and read the profiles from files. On developer.apple.com, under
+**Profiles → +**, create a **Mac App Store Connect** profile for the App ID and save it as
+`build/embedded.provisionprofile`, and a **macOS App Development** profile that includes your Mac as
+`build/development.provisionprofile`. Both are git-ignored, because they're tied to your account.
 
 ### Test the sandboxed app
 
@@ -306,20 +303,18 @@ log stream --style compact --predicate 'eventMessage CONTAINS "deny" AND eventMe
    The version comes from there, not from Xcode's own version fields.
 2. In Xcode, choose the **GitLantern** scheme and **Any Mac (Apple Silicon, Intel)**, then
    **Product → Archive**. It builds the app for both processors with the Release configuration, signs it
-   with your Apple Distribution certificate, and opens the archive in the **Organizer** when it's done.
+   with your Apple Development certificate, and opens the archive in the **Organizer** when it's done.
 3. In the Organizer, select the archive and click **Distribute App**. Choose **App Store Connect**, then
-   **Upload**. When Xcode asks about signing, choose **Manually manage signing** with your Apple
-   Distribution certificate and the GitLantern Mac App Store profile. Xcode checks the app before it
-   uploads. A warning about missing symbols (dSYMs) for Electron's frameworks is expected, and doesn't
-   stop the upload.
+   **Upload**, and leave **Automatically manage signing** selected. Xcode re-signs the app and everything
+   inside it, the bundled Git included, with your Apple Distribution certificate and an App Store profile
+   it keeps up to date (**Mac Team Store Provisioning Profile**). Then it checks the app and uploads it.
+   It ends with "Upload completed with warnings", listing missing symbols (dSYMs) for Electron, its
+   helpers and the bundled Git. That's expected: the upload went through.
 4. App Store Connect emails you when the build has been processed (usually within half an hour). Then
-   open the app's version page, pick the build under **Build**, and fill in the listing:
-   - **Screenshots:** Mac sizes are 1280×800, 1440×900, 2560×1600 or 2880×1800. `yarn screenshots` makes
-     1400×880 images, so resize or pad them.
-   - **App Privacy:** GitLantern collects nothing itself. The AI commit message feature sends the staged
-     changes to the provider the user sets up, with their own key, only when they use it.
-   - **App Review notes:** say how to try it without an account, for example: "Choose Clone, paste
-     https://github.com/octocat/Hello-World or any public repository, pick a folder with Browse…, then Clone."
+   open the app's version page, pick the build under **Build**, and fill in the listing from
+   [STORE-LISTING.md](STORE-LISTING.md): text, App Privacy, age rating and App Review notes.
+   - **Screenshots:** `yarn build && yarn screenshots --store && yarn store-images` makes ten at 2880×1800
+     in `dist/store/mac-app-store/`.
 5. Click **Add for Review**, then **Submit**.
 
 Without Xcode, `yarn dist:mas` checks your certificates and profile files, builds and signs the same app,

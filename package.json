@@ -26,7 +26,8 @@
     "mas:git": "bash scripts/build-mas-git.sh",
     "xcode": "open macos/GitLantern.xcodeproj",
     "release": "node scripts/release.mjs",
-    "screenshots": "node scripts/screenshots.mjs"
+    "screenshots": "node scripts/screenshots.mjs",
+    "store-images": "electron scripts/store-images.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.9.0",

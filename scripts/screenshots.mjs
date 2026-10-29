@@ -12,11 +12,16 @@ import { fileURLToPath } from 'node:url'
 import zlib from 'node:zlib'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const out = path.join(root, 'docs', 'screenshots')
+// `--store`: for the store listings, 1440×900 at twice the pixels, into dist/store/screens, where
+// scripts/store-images.mjs frames them. Without the diff and merge tool links, which the Mac App Store
+// version doesn't have, so the same pictures are true of both stores.
+const store = process.argv.includes('--store')
+const out = store ? path.join(root, 'dist', 'store', 'screens') : path.join(root, 'docs', 'screenshots')
 const PORT = 9333
-const WIDTH = 1400
-const HEIGHT = 880
-const only = process.argv.slice(2)
+const WIDTH = store ? 1440 : 1400
+const HEIGHT = store ? 900 : 880
+const SCALE = store ? 2 : 1
+const only = process.argv.slice(2).filter((arg) => !arg.startsWith('--'))
 
 // ---- Demo repositories ----
 
@@ -337,7 +342,9 @@ async function fakeGitHub(base, web) {
       response.end(JSON.stringify(route.endsWith('s') ? [] : {}))
     }
   })
-  await new Promise((resolve, reject) => server.listen(443, '127.0.0.1', resolve).on('error', reject))
+  // macOS only lets programs that aren't root take a port below 1024 on every address at once.
+  const address = process.platform === 'darwin' ? '0.0.0.0' : '127.0.0.1'
+  await new Promise((resolve, reject) => server.listen(443, address, resolve).on('error', reject))
 
   // origin now "lives" on localhost; ssh to it runs git against the demo remote instead.
   const remote = path.join(base, 'remote', 'lantern-web.git').replace(/\\/g, '/')
@@ -400,6 +407,7 @@ class Page {
   async shot(name) {
     if (only.length > 0 && !only.includes(name)) return
     await sleep(400)
+    if (store) await this.run(`for (const el of document.querySelectorAll('button.link')) if (/^(Diff|Merge) tool$/.test(el.textContent.trim())) el.style.display = 'none'`)
     const { data } = await this.send('Page.captureScreenshot', { format: 'png' })
     fs.writeFileSync(path.join(out, `${name}.png`), Buffer.from(data, 'base64'))
     console.log(`  ${name}.png`)
@@ -638,7 +646,7 @@ async function main() {
       socket.addEventListener('error', reject)
     })
     const page = new Page(socket)
-    await page.send('Emulation.setDeviceMetricsOverride', { width: WIDTH, height: HEIGHT, deviceScaleFactor: 1, mobile: false })
+    await page.send('Emulation.setDeviceMetricsOverride', { width: WIDTH, height: HEIGHT, deviceScaleFactor: SCALE, mobile: false })
     await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] })
     await page.send('Runtime.enable')
     await scenes(page, { web, api: apiRepo })
