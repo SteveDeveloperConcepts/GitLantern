@@ -259,10 +259,16 @@ doesn't ask about export compliance for each build.
    profile for that App ID and your Apple Distribution certificate. Name it exactly
    **GitLantern Mac App Store**: the project's Release configuration looks for it by that name. Then, in
    Xcode, go to **Settings → Accounts →** your team **→ Download Manual Profiles**.
-6. **Your team in the project:** open the project with `yarn xcode`, select the **GitLantern** target, then
-   **Signing & Capabilities**. Under both **Debug** and **Release**, choose your **Team**. Debug signs
-   automatically, for running on your Mac. Release uses the Apple Distribution certificate and the profile
-   above. This writes your team ID into the project file, which is fine to commit.
+6. **Your team in the project:** open the project with `yarn xcode` and select the **GitLantern** target.
+   - **Signing & Capabilities → Signing (Debug):** choose your **Team**. Debug signs automatically, for
+     running on your Mac.
+   - **Build Settings → All:** search for **Development Team**, expand it, and set **Release** to your team
+     as well. Release signs manually, so Signing & Capabilities has no Team menu for it: Xcode finds the
+     profile above by its name within that team. Until it's set, Signing (Release) shows Team: None and
+     the profile's name in red.
+
+   Signing (Release) should then show your team and the **Apple Distribution** certificate. This writes your
+   team ID into the project file, which is fine to commit.
 7. **App record:** in [App Store Connect](https://appstoreconnect.apple.com), go to **Apps → + → New App**.
    Choose macOS, the bundle ID above, a name, a primary language and an SKU (any ID you like, such as `gitlantern`).
 
