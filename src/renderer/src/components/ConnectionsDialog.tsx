@@ -136,7 +136,9 @@ function ConnectForm({ provider, browserHosts, onCancel, onConnected }: ConnectF
   useEffect(() => api.accounts.onSignInProgress(setProgress), [])
   // Leaving the form gives up on a sign-in still waiting for the browser.
   useEffect(() => () => void api.accounts.cancelSignIn(), [])
-  const browserSignIn = info.browserSignIn !== undefined && browserHosts.includes(normalizeHost(host))
+  // GitLab's and Gitea's sign-in comes back to a server on 127.0.0.1, which the App Store version can't run.
+  const browserSignIn =
+    info.browserSignIn !== undefined && !(api.appStore && info.browserSignIn === 'browser') && browserHosts.includes(normalizeHost(host))
 
   const tokenUrl = info.tokenUrl(normalizeHost(host), organization.trim() || undefined)
   const ready =

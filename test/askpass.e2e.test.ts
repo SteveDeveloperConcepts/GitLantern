@@ -19,19 +19,22 @@ describe('fitsSocketPath', () => {
   })
 })
 
-// Over a socket (a named pipe on Windows), and over 127.0.0.1 as when the socket's path would be too long.
-describe.skipIf(!fs.existsSync(helper)).each([
-  ['socket', false],
-  ['127.0.0.1', true]
-])('askpass round trip over %s (needs `npm run build`)', (_name, tcp) => {
+// Over a socket (a named pipe on Windows), and over one whose path is too long to listen on or connect to,
+// as deep in the Mac App Store build's container. Named pipes have no folder, so that's not on Windows.
+const cases: [string, boolean][] = [['a socket', false]]
+if (process.platform !== 'win32') cases.push(['a socket too deep for its whole path', true])
+
+describe.skipIf(!fs.existsSync(helper)).each(cases)('askpass round trip over %s (needs `npm run build`)', (_name, deep) => {
   let server: AskPassServer
   const prompts: string[] = []
   let env: Record<string, string>
 
   beforeAll(async () => {
     isolateGit()
+    const tempDir = deep ? path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gl-deep-')), 'x'.repeat(100)) : undefined
+    if (tempDir) fs.mkdirSync(tempDir)
     server = await startAskPassServer({
-      tcp,
+      tempDir,
       onPrompt: async (prompt) => {
         prompts.push(prompt)
         if (prompt.startsWith('Username')) return 'alice'
@@ -39,6 +42,7 @@ describe.skipIf(!fs.existsSync(helper)).each([
         return null
       }
     })
+    expect(fitsSocketPath(server.address)).toBe(!deep)
     // A folder with a space, like "Application Support" on macOS or a Windows profile "John Smith".
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'git lantern-'))
     env = askPassEnv({

@@ -337,6 +337,9 @@ client ID (which isn't secret) in `settings.json`, for example
 - **Gitea / Forgejo:** **Settings → Applications → Create a new OAuth2 application**. Untick
   **Confidential client** and set the redirect URI to `http://127.0.0.1/callback`.
 
+The Mac App Store version signs in to GitLab and Gitea with a token only: its sandbox doesn't let it
+take the browser's redirect.
+
 GitLantern never changes your SSH keys. The only exception is **Create an SSH key**, which writes
 `~/.ssh/id_ed25519` when you have no key yet.
 

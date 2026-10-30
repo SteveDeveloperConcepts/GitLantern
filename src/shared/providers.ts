@@ -21,7 +21,8 @@ export interface ProviderInfo {
   /**
    * How browser sign-in (OAuth) works, where the service has it: `device` shows a code to enter on
    * the service's site, `browser` sends the browser back to GitLantern on 127.0.0.1. It's only offered
-   * for servers GitLantern has an OAuth application for.
+   * for servers GitLantern has an OAuth application for, and `browser` not in the Mac App Store build,
+   * which has no entitlement to listen for the browser.
    */
   browserSignIn?: 'device' | 'browser'
 }

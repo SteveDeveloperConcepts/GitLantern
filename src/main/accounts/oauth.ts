@@ -3,6 +3,7 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { providerInfo, type ProviderId } from '../../shared/providers'
 import type { SignInProgress } from '../../shared/types'
+import { appStore } from '../sandbox'
 
 /**
  * OAuth applications registered for GitLantern, by server: host → client ID. Browser sign-in is only
@@ -218,13 +219,16 @@ async function browserFlow({ provider, host, clientId, openUrl, onProgress, sign
 /**
  * Sign in through the browser and get a token for `host`. GitHub uses the device flow, where the
  * user types a short code on github.com. GitLab and Gitea/Forgejo use an authorization code with
- * PKCE, the browser coming back to a one-off server on 127.0.0.1.
+ * PKCE, the browser coming back to a one-off server on 127.0.0.1. The Mac App Store build has no
+ * entitlement to run that server, so it only has the device flow.
  */
 export function signInWithBrowser(options: SignInOptions): Promise<TokenSet> {
-  switch (providerInfo(options.provider).browserSignIn) {
+  const info = providerInfo(options.provider)
+  switch (info.browserSignIn) {
     case 'device':
       return deviceFlow(options)
     case 'browser':
+      if (appStore) return Promise.reject(new Error(`The App Store version can’t sign in to ${info.name} in the browser. Paste a token instead.`))
       return browserFlow(options)
     default:
       return Promise.reject(new Error('This service doesn’t offer browser sign-in'))

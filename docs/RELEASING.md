@@ -235,7 +235,10 @@ Apple runs every App Store app inside the **App Sandbox**. GitLantern works arou
   (`git difftool` / `mergetool`) aren't offered, because they'd have to run inside the sandbox. Custom
   actions do run inside it, so some may not work.
 - **Sign-in:** Git's askpass helper runs through Electron's helper app, which inherits the sandbox.
-  Browser sign-in to GitLab and Gitea needs the `network.server` entitlement for its `127.0.0.1` redirect.
+- **No listening:** the app has no `network.server` entitlement, which App Review turns down in an app
+  that isn't a server. So askpass always uses a Unix socket (bound from inside its folder when the
+  container's path is too long for one), and GitLab and Gitea offer no browser sign-in, whose redirect
+  needs a server on `127.0.0.1`. Pasting a token works as usual, and so does GitHub's device flow.
 - **Updates** come from the App Store. The GitHub update check is off.
 
 The sandbox entitlements are in `build/entitlements.mas.plist` (the app) and

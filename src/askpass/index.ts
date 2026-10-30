@@ -3,6 +3,7 @@
 // Keep it free of electron and app imports: it runs as plain Node and must stay a single file.
 // (A named import also avoids the bundler's shared interop chunk.)
 import { createConnection } from 'node:net'
+import { basename, dirname } from 'node:path'
 
 const address = process.env.GITLANTERN_ASKPASS_ADDRESS
 const token = process.env.GITLANTERN_ASKPASS_TOKEN
@@ -14,9 +15,18 @@ if (!address || !token) {
 }
 
 let reply = ''
-// A Unix socket or named pipe, or a port on this computer when the app's socket path would be too long.
-const port = /^127\.0\.0\.1:(\d+)$/.exec(address)?.[1]
-const socket = port ? createConnection(Number(port), '127.0.0.1') : createConnection(address)
+// A named pipe on Windows. A Unix socket is reached from inside its folder: its whole path can be too
+// long to connect to (over 103 bytes, deep in the Mac App Store build's container).
+let target = address
+if (address.startsWith('/')) {
+  try {
+    process.chdir(dirname(address))
+    target = basename(address)
+  } catch {
+    process.exit(1)
+  }
+}
+const socket = createConnection(target)
 socket.setEncoding('utf8')
 socket.on('connect', () => socket.write(`${JSON.stringify({ token, prompt })}\n`))
 socket.on('data', (chunk: string) => {

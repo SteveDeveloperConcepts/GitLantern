@@ -156,4 +156,8 @@ describe('the Xcode project', () => {
     expect(rest).toEqual(builder)
     expect(groups).toEqual([`$(TeamIdentifierPrefix)${appId}`])
   })
+
+  it('doesn’t ask to listen for connections, which App Review turns down in an app that isn’t a server', () => {
+    expect(entitlements('build/entitlements.mas.plist')).not.toHaveProperty(['com.apple.security.network.server'])
+  })
 })

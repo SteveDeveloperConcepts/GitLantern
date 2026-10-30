@@ -169,7 +169,8 @@ is fetched from `refs/pull/N/head` (GitHub, Gitea) or `refs/merge-requests/N/hea
 `accounts/oauth.ts` (empty until GitLantern's own applications are registered) plus `oauthClients` in
 settings.json. GitHub uses the device flow: the app shows the user code and polls the token endpoint.
 GitLab and Gitea use an authorization code with PKCE; a one-off server on 127.0.0.1 (random port)
-takes the redirect and ignores requests without the right `state`. Neither flow uses a client
+takes the redirect and ignores requests without the right `state`. The Mac App Store build may not
+listen for connections, so there only GitHub's flow is offered. Neither flow uses a client
 secret. Tokens are kept like pasted ones; a refresh token goes in the SecretStore and `freshToken`
 renews the access token two minutes before it expires (GitLab: 2 hours, Gitea: 1 hour), for askpass
 and API calls alike. GitLab OAuth tokens authenticate git as `oauth2`, and its API with `Bearer`.
@@ -188,7 +189,9 @@ trampoline (`askpass.cmd` on Windows, `askpass.sh` elsewhere) in the app's data 
 builds use the copy in `resources/` instead, because Microsoft Store packages hide new AppData files from
 other programs. The trampoline runs
 the app's own binary with `ELECTRON_RUN_AS_NODE=1` on `askpass.js`. That helper sends the prompt to the
-app over a named pipe or Unix socket, authenticated with a per-run random token. The app shows a dialog,
+app over a named pipe or Unix socket, authenticated with a per-run random token. A socket whose path
+is longer than macOS takes (103 bytes, as deep in the App Store build's container) is bound and
+reached by its name from inside its folder. The app shows a dialog,
 and "Remember" stores the answer with `safeStorage`. Git credential helpers you already have
 (Git Credential Manager, osxkeychain) still run first.
 
