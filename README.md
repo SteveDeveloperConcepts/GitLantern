@@ -268,7 +268,8 @@ Builds for the Microsoft Store and the Mac App Store are covered in [docs/RELEAS
    you've opened before appear under **Recent** and in the repository menu at the top left. Each
    repository opens in a tab; **+** in the tab bar opens another, and **Workspaces** opens a saved set.
 3. **Explore history:** scroll the graph, and click a commit to see its details and diff in the pane
-   below. Use **↑ / ↓** to move between commits. Drag the divider to resize the pane. **Ctrl-click**
+   below. Use **↑ / ↓** to move between commits. Drag the divider to resize the pane, and the one beside
+   the left panel to make the panel wider or narrower (double-click it to reset). **Ctrl-click**
    (**⌘-click**) a second commit to compare the two. **History** and **Blame** above a diff show the
    file's past.
 4. **Commit:** on the **Changes** tab, click a file to see its diff, then press **+** to stage it (or

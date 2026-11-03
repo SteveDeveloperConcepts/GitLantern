@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode } from 'react'
 import type {
   Branch,
   Commit,
@@ -65,6 +65,7 @@ import { layoutGraph } from './graph/layout'
 import { refPills } from './graph/refs'
 import { linkedWithin, matchesSearch, searchTerms } from './graph/search'
 import { rulesFor } from './issueLinks'
+import { readStored, writeStored } from './storage'
 import { addToast, toastDetail, type Toast } from './toasts'
 import { useRepo } from './useRepo'
 
@@ -101,6 +102,16 @@ const lineCount = (count: number): string => `${count} line${count === 1 ? '' : 
 const short = (hash: string): string => hash.slice(0, 7)
 const FOLDER_APP = navigator.userAgent.includes('Mac') ? 'Finder' : navigator.userAgent.includes('Windows') ? 'Explorer' : 'the file manager'
 
+/** The left panel's width, dragged with the divider beside it; every tab shares it. */
+const PANEL_WIDTH_KEY = 'gitlantern.panelWidth'
+const PANEL_WIDTH = { min: 220, initial: 320 }
+/** Room the history keeps however wide the panel is dragged (the stylesheet holds to it too). */
+const CENTER_MIN = 360
+const storedPanelWidth = (): number => {
+  const width = readStored<unknown>(PANEL_WIDTH_KEY, PANEL_WIDTH.initial)
+  return typeof width === 'number' && Number.isFinite(width) ? Math.max(PANEL_WIDTH.min, Math.round(width)) : PANEL_WIDTH.initial
+}
+
 interface Props {
   repo: RepoInfo
   /** The tab on show; hidden tabs keep their state but don't take keyboard shortcuts. */
@@ -123,6 +134,8 @@ interface Props {
 
 export function RepoView({ repo, active, settings, accountCount, accountsVersion, configVersion, ...app }: Props) {
   const [tab, setTab] = useState<Tab>('changes')
+  const [panelWidth, setPanelWidth] = useState(storedPanelWidth)
+  const workspace = useRef<HTMLDivElement>(null)
   const [selectedHash, setSelectedHash] = useState<string | null>(null)
   /** A stash whose changes are open below the graph, instead of a commit. */
   const [selectedStash, setSelectedStash] = useState<string | null>(null)
@@ -174,6 +187,24 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
   useEffect(() => {
     if (status && !status.bisect) setBisectStep(null)
   }, [status])
+
+  // Another tab may have resized the panel while this one was hidden.
+  useEffect(() => {
+    if (active) setPanelWidth(storedPanelWidth())
+  }, [active])
+
+  const startPanelDrag = (event: PointerEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+  const panelWidthAt = (x: number): number => {
+    const rect = workspace.current?.getBoundingClientRect()
+    return rect ? Math.round(Math.max(PANEL_WIDTH.min, Math.min(rect.width - CENTER_MIN, x - rect.left))) : panelWidth
+  }
+  const savePanelWidth = (width: number) => {
+    setPanelWidth(width)
+    writeStored(PANEL_WIDTH_KEY, width)
+  }
 
   const commitBranchNames = useMemo(() => commitBranches(commits), [commits])
   const byHash = useMemo(() => new Map(commits.map((commit) => [commit.hash, commit])), [commits])
@@ -1091,7 +1122,7 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
         {bisectBanner}
         <Errors errors={errors} onDismiss={(id) => setErrors((list) => list.filter((e) => e.id !== id))} />
       </div>
-      <div className="workspace">
+      <div className="workspace" ref={workspace} style={{ '--panel-width': `${panelWidth}px` } as CSSProperties}>
         <aside className="left-panel">
           <div className="tabs" role="tablist" aria-label="Panels">
             {tabs.map((t) => (
@@ -1179,6 +1210,16 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
             )}
           </div>
         </aside>
+        <div
+          className="panel-divider"
+          role="separator"
+          aria-orientation="vertical"
+          title="Drag to resize, double-click to reset"
+          onPointerDown={startPanelDrag}
+          onPointerMove={(event) => event.currentTarget.hasPointerCapture(event.pointerId) && setPanelWidth(panelWidthAt(event.clientX))}
+          onPointerUp={(event) => event.currentTarget.hasPointerCapture(event.pointerId) && savePanelWidth(panelWidthAt(event.clientX))}
+          onDoubleClick={() => savePanelWidth(PANEL_WIDTH.initial)}
+        />
         <main className="center">
           {reviewing ? (
             <PullRequestReview
