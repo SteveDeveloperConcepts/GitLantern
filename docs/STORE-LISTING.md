@@ -140,12 +140,14 @@ Connecting a Git service under Accounts needs an access token for that service, 
 
 ### Store listing
 
-**Product name:** GitLantern
+**Product name:** GitLantern - Git Desktop Client, picked from the dropdown. Reserve it first under
+Product management → Manage app names → Reserve more names. Keep *GitLantern* reserved too: the package's
+`appx.displayName` in `electron-builder.yml` is GitLantern, so that's what the Start menu shows.
 
 **Short description** [1000] (shown above the description):
 
 ```
-A fast, friendly Git client for Windows. A colour-coded commit graph, line-by-line staging, history editing and pull request reviews, for GitHub, GitLab, Bitbucket, Azure DevOps, Gitea and any Git server. Requires Git for Windows.
+A fast, friendly Git client for Windows. A colour-coded commit graph, line-by-line staging, history editing and pull request reviews, for GitHub, GitLab, Bitbucket, Azure DevOps, Gitea and any Git server. Uses live generative AI for one optional feature: drafting commit messages, only when you ask. Requires Git for Windows.
 ```
 
 **Description** [10000]:
@@ -169,7 +171,7 @@ YOUR HISTORY
 COMMITTING
 • Stage, unstage or discard whole files, single hunks or individual lines. Discarded files go to the Recycle Bin.
 • Amend the last commit, stash your work with a note, and save or apply patches.
-• Commit message templates, a Conventional Commits helper, and an optional AI button that drafts the message from your staged changes, with Claude, an OpenAI-compatible service or Ollama. Nothing is sent until you click it.
+• Commit message templates, a Conventional Commits helper, and an optional AI button that drafts the message from your staged changes (see GENERATIVE AI below).
 
 CHANGING HISTORY
 • Reorder, squash, reword, edit or drop commits in one dialog.
@@ -201,6 +203,9 @@ YOUR WAY
 • Add your own commands to the Tools menu and to the menus of commits, branches and files.
 • Runs natively on Arm PCs.
 
+GENERATIVE AI
+GitLantern uses live generative AI for one optional feature: the AI button above the commit message drafts a message from your staged changes. It's off until you choose a service under Settings → AI: Claude or an OpenAI-compatible service with your own API key, or your own Ollama server. Nothing is sent until you click the button. The draft only fills in the commit message box, and AI can get things wrong, so read and edit it before you commit. If an AI-written message is inappropriate, offensive or harmful, click "Report a problem with it" under the message, or open an issue at https://github.com/SteveDeveloperConcepts/GitLantern/issues. Every report is reviewed and acted on.
+
 PRIVATE BY DESIGN
 No GitLantern account, no analytics, no tracking. GitLantern only goes online when Git does, or when you ask it to check a token, list your repositories or pull requests, or write a commit message with AI. Updates come through the Microsoft Store.
 ```
@@ -219,7 +224,7 @@ Merge, rebase, cherry-pick, revert and reset, each explained first
 Resolve conflicts side by side, or in your own merge tool
 Review pull requests: comment on lines, mark files viewed, approve
 Works with GitHub, GitLab, Bitbucket, Azure DevOps, Gitea and any Git server
-AI commit messages with Claude, OpenAI-compatible services or Ollama, only when you ask
+Optional generative AI drafts commit messages, only when you ask, with a link to report a bad one
 File history across renames, blame, and bisect
 Branches, tags, worktrees, submodules, stashes, Git LFS and git-flow
 Uses your installed Git: your config, hooks and credential manager keep working
@@ -291,6 +296,22 @@ diff merge
 | Support contact info | https://github.com/SteveDeveloperConcepts/GitLantern/issues |
 | System requirements (notes) | Requires Git for Windows (https://git-scm.com/download/win). |
 | Restricted capability `runFullTrust` | Desktop Git client: runs Git and SSH on the user's computer. |
+| Product declarations | Tick **This product incorporates generative AI features, which utilize artificial intelligence to create new content**: the AI button writes commit messages (policy 11.16). Leave the others as they are. |
+
+### Submission options
+
+**Notes for certification:**
+
+```
+GitLantern is a Git client. It needs Git for Windows (https://git-scm.com/download/win). No account is needed to try it: click "Clone a repository…", paste https://github.com/octocat/Hello-World, choose a folder and click Clone.
+
+Generative AI (policy 11.16):
+- What it does: the sparkle button above the commit message, in the Changes tab, drafts a Git commit message from the staged changes. It is the only generative AI feature, and the "generative AI" product declaration is ticked.
+- Disclosure: the short description, the description (GENERATIVE AI section) and the product features say the app uses live generative AI.
+- When it runs: only after the user chooses a service under Settings → AI (Claude or an OpenAI-compatible service with their own API key, or their own Ollama server), and only when they click the button. No key comes with the app. To try it without a paid key, run Ollama on the test PC, choose OpenAI-compatible with the address http://localhost:11434/v1 and a model you have pulled (for example llama3.2), stage a change and click the sparkle button.
+- Keeping the content within Store policy: the model is told to reply with a commit message describing the diff and nothing else, and to ignore any instructions inside the diff. The text is never posted or shared. It only fills in the user's own commit message box, where they read and edit it before committing, and it uses the content safety of the service the user chose.
+- Reporting: under every AI-written message, "Report a problem with it" opens a new issue on the project's GitHub (https://github.com/SteveDeveloperConcepts/GitLantern/issues), the listing's support contact. The developer reviews each report and acts on it, for example by changing the instructions the model is given.
+```
 
 ### Age ratings
 

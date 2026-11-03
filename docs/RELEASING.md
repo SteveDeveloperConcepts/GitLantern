@@ -137,7 +137,8 @@ with no SmartScreen warning, and updates come through the Store.
    (Apps and games). Check the sign-up page for the current fee.
 2. **Reserve the name.** Go to **Apps and games → New product → MSIX or PWA app**, and reserve
    *GitLantern*. If the name is taken, reserve another one and change `appx.displayName` in
-   `electron-builder.yml` to match.
+   `electron-builder.yml` to match. The Store listing's product name is the longer
+   *GitLantern - Git Desktop Client*: reserve that too, under **Product management → Manage app names**.
 3. **Copy your package identity.** Open the app, then **Product management → Product identity**. Copy three
    values into the `appx` section of `electron-builder.yml`, replacing the `REPLACE-ME` placeholders:
 
@@ -174,7 +175,8 @@ It installs for all users. Remove it afterwards with
 1. In Partner Center, open the app and click **Start your submission**.
 2. **Packages:** drag in both `.appx` files from `dist/`.
 3. **Properties:** category *Developer tools*. In **System requirements**, note that Git for Windows must be
-   installed.
+   installed. Under **Product declarations**, tick the generative AI one: the AI button writes commit
+   messages (policy 11.16).
 4. **Store listings:** the description, features, screenshots and logos in
    [STORE-LISTING.md](STORE-LISTING.md). Make the images with
    `yarn build && yarn screenshots --store && yarn store-images`; they're in `dist/store/microsoft-store/`.

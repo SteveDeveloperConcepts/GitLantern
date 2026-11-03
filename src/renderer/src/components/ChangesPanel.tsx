@@ -10,6 +10,9 @@ import { Menu } from './Menu'
 
 const api = window.api
 
+/** Where an AI-written message can be reported: Microsoft Store policy 11.16 asks for a way to report what AI writes. */
+const AI_REPORT_URL = `https://github.com/SteveDeveloperConcepts/GitLantern/issues/new?title=${encodeURIComponent('AI commit message: ')}`
+
 /** Which list a right-clicked file is in. */
 export type ChangeList = 'unstaged' | 'staged'
 
@@ -61,6 +64,8 @@ export function ChangesPanel(props: Props) {
   const [typed, setTyped] = useState<{ summary: string; description: string } | null>(null)
   const [conventional, setConventional] = useState(false)
   const [generating, setGenerating] = useState(false)
+  /** The message in the fields was written by AI and hasn't been replaced since. */
+  const [drafted, setDrafted] = useState(false)
 
   // A commit or a change of repository ends amending.
   useEffect(() => {
@@ -83,6 +88,7 @@ export function ChangesPanel(props: Props) {
   const fill = (text: { summary: string; description: string }) => {
     setSummary(text.summary)
     setDescription(text.description)
+    setDrafted(false)
   }
 
   const toggleAmend = (on: boolean) => {
@@ -117,7 +123,13 @@ export function ChangesPanel(props: Props) {
     setGenerating(true)
     api.ai
       .commitMessage(repoPath)
-      .then((text) => fill(splitMessage(text)), (err: unknown) => onError(errorMessage(err)))
+      .then(
+        (text) => {
+          fill(splitMessage(text))
+          setDrafted(true)
+        },
+        (err: unknown) => onError(errorMessage(err))
+      )
       .finally(() => setGenerating(false))
   }
 
@@ -263,6 +275,14 @@ export function ChangesPanel(props: Props) {
             rows={3}
             aria-label="Commit description"
           />
+          {drafted && message !== '' && (
+            <span className="hint">
+              Written by AI: read it before you commit.{' '}
+              <button type="button" className="link inline" onClick={() => void api.tools.openUrl(AI_REPORT_URL)}>
+                Report a problem with it
+              </button>
+            </span>
+          )}
           <label className="checkbox compact" title="Add the staged changes to the last commit, and change its message if you like">
             <input type="checkbox" checked={amend} disabled={!props.canAmend || busy} onChange={(event) => toggleAmend(event.target.checked)} />
             Amend last commit
