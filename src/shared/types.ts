@@ -656,6 +656,8 @@ export interface UserSettings {
   zoom: number
   /** Fetch every remote this often while a repository is open; 0 turns it off. */
   autoFetchMinutes: number
+  /** Folder the clone dialog always starts in (an absolute path), or empty for the one last cloned into. */
+  cloneBaseFolder: string
   /** Explicit git executable, used after a restart. Read-only here: `settings.chooseGit` sets it. */
   gitPath: string
   /** Editor and terminal ids from `tools.list()`, or empty for the first one found. */

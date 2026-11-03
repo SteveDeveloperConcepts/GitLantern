@@ -107,7 +107,19 @@ function Row({ label, hint, children }: { label: string; hint?: ReactNode; child
 }
 
 /** A text field that saves when it loses focus (or on Enter), not on every key. */
-function TextSetting({ value, onSave, ...rest }: { value: string; onSave(value: string): void; placeholder?: string; type?: string; className?: string }) {
+function TextSetting({
+  value,
+  onSave,
+  ...rest
+}: {
+  value: string
+  onSave(value: string): void
+  placeholder?: string
+  type?: string
+  className?: string
+  readOnly?: boolean
+  'aria-label'?: string
+}) {
   const [draft, setDraft] = useState(value)
   useEffect(() => setDraft(value), [value])
   return (
@@ -211,6 +223,16 @@ function GitSection({ settings, onChange, repoPath }: SectionProps & { repoPath:
       .importIdentity()
       .then(reload)
       .catch((err: unknown) => setError(errorMessage(err)))
+  // Only a full path is kept (sanitizeSettings), so say so rather than leave the field looking saved.
+  const saveCloneFolder = (value: string) => {
+    const folder = value.trim()
+    if (folder && !/^([a-z]:)?[\\/]/i.test(folder)) {
+      setError('Clone into needs a full path, like C:\\Code or /Users/you/Code.')
+      return
+    }
+    setError(null)
+    onChange({ cloneBaseFolder: folder })
+  }
 
   return (
     <>
@@ -241,6 +263,25 @@ function GitSection({ settings, onChange, repoPath }: SectionProps & { repoPath:
             </option>
           ))}
         </select>
+      </Row>
+      <Row label="Clone into" hint="The folder new clones go in, as a full path. Empty: the folder you last cloned into.">
+        <TextSetting
+          className="mono"
+          aria-label="Clone into"
+          value={settings.cloneBaseFolder}
+          placeholder={api.appStore ? 'Choose a folder with Browse…' : 'The folder you last cloned into'}
+          // The App Store version may only write in a folder picked with Browse….
+          readOnly={api.appStore}
+          onSave={saveCloneFolder}
+        />
+        <span className="row-wrap">
+          <button onClick={() => void api.repo.pickFolder().then((folder) => folder && saveCloneFolder(folder))}>Browse…</button>
+          {settings.cloneBaseFolder && (
+            <button className="link" onClick={() => onChange({ cloneBaseFolder: '' })}>
+              Use the last folder
+            </button>
+          )}
+        </span>
       </Row>
       {error && <p className="test-fail">{error}</p>}
       {!repoPath && <p className="dim">Open a repository to change your name, email and signing here.</p>}

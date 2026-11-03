@@ -264,8 +264,9 @@ Builds for the Microsoft Store and the Mac App Store are covered in [docs/RELEAS
    page, create a token with the permissions shown, paste it in and click **Connect**. Using SSH
    instead? The same dialog shows your SSH key, creates one if you need it and tests it.
 2. **Open or clone a repository:** **Open a repository…** picks a folder already on your computer.
-   **Clone a repository…** takes any address, or lets you pick from your connected accounts. Folders
-   you've opened before appear under **Recent** and in the repository menu at the top left. Each
+   **Clone a repository…** takes any address, or lets you pick from your connected accounts. It clones
+   into the folder you last used, or always into one you set under **Settings → Git → Clone into**
+   (such as `C:\Code`). Folders you've opened before appear under **Recent** and in the repository menu at the top left. Each
    repository opens in a tab; **+** in the tab bar opens another, and **Workspaces** opens a saved set.
 3. **Explore history:** scroll the graph, and click a commit to see its details and diff in the pane
    below. Use **↑ / ↓** to move between commits. Drag the divider to resize the pane, and the one beside

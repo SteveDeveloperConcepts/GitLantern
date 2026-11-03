@@ -19,7 +19,7 @@ export interface AppSettings {
   recentRepos: string[]
   /** Explicit git executable; otherwise PATH and common install locations are searched. */
   gitPath?: string
-  /** Folder the clone dialog last cloned into. */
+  /** Folder the clone dialog last cloned into; the Settings screen's cloneBaseFolder comes first. */
   cloneFolder?: string
   /** OAuth applications for servers GitLantern has none for, such as a company GitLab: host → client ID. */
   oauthClients?: Record<string, string>
@@ -48,6 +48,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   colors: {},
   zoom: 100,
   autoFetchMinutes: 0,
+  cloneBaseFolder: '',
   gitPath: '',
   editor: '',
   terminal: '',
@@ -150,6 +151,8 @@ export function sanitizeSettings(value: unknown): Partial<UserSettings> {
   if (typeof value.autoFetchMinutes === 'number' && Number.isFinite(value.autoFetchMinutes)) {
     result.autoFetchMinutes = Math.min(1440, Math.max(0, Math.round(value.autoFetchMinutes)))
   }
+  const cloneBase = text(value.cloneBaseFolder, 1000)?.trim()
+  if (cloneBase !== undefined && (cloneBase === '' || path.isAbsolute(cloneBase))) result.cloneBaseFolder = cloneBase
   // gitPath isn't taken from here: it names a program GitLantern runs, so only the main process's own
   // file picker sets it (Settings.setGitPath).
   for (const key of ['editor', 'terminal'] as const) {

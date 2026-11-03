@@ -34,6 +34,14 @@ describe('settings from the Settings screen', () => {
     })
   })
 
+  it('takes a clone folder only as a full path', () => {
+    const folder = path.join(os.homedir(), 'Code')
+    expect(sanitizeSettings({ cloneBaseFolder: ` ${folder} ` })).toEqual({ cloneBaseFolder: folder })
+    expect(sanitizeSettings({ cloneBaseFolder: '' })).toEqual({ cloneBaseFolder: '' })
+    expect(sanitizeSettings({ cloneBaseFolder: 'Code' })).toEqual({})
+    expect(sanitizeSettings({ cloneBaseFolder: 3 })).toEqual({})
+  })
+
   it('saves them, and keeps what only the main process may change apart', () => {
     const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'gitlantern-settings-')), 'settings.json')
     const settings = new Settings(file)

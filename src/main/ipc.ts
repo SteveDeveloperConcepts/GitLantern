@@ -393,10 +393,12 @@ export function registerIpc(ctx: Context): void {
   })
   handle(Invoke.repoPickFolder, () => pickFolder('Clone into'))
   handle(Invoke.repoDefaultCloneFolder, () => {
-    const saved = ctx.settings.get().cloneFolder
+    // The folder chosen in Settings, then the one last cloned into.
+    const base = ctx.settings.user().cloneBaseFolder
+    const saved = [base ? path.normalize(base) : '', ctx.settings.get().cloneFolder ?? '']
     // The App Store version may only write in folders the user picked, so it has no default of its own.
-    if (appStore) return saved && ctx.folders.reachable(saved, true) ? saved : ''
-    return saved ?? path.join(os.homedir(), 'Code')
+    if (appStore) return saved.find((folder) => folder && ctx.folders.reachable(folder, true)) ?? ''
+    return saved.find(Boolean) ?? path.join(os.homedir(), 'Code')
   })
   handle(Invoke.repoClone, async (url, parentFolder) => {
     const parent = path.resolve(str(parentFolder, 'folder'))
