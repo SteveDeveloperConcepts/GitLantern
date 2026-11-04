@@ -3,6 +3,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type 
 export interface MenuItem {
   key: string
   label: ReactNode
+  /** The tooltip, for a label that had to be shortened. */
+  title?: string
   hint?: string
   checked?: boolean
   disabled?: boolean
@@ -32,6 +34,7 @@ function MenuGroups({ groups, onPick }: { groups: MenuItem[][]; onPick(item: Men
                 key={item.key}
                 role="menuitem"
                 className={`menu-item${item.checked ? ' checked' : ''}`}
+                title={item.title}
                 disabled={item.disabled}
                 onClick={() => onPick(item)}
               >

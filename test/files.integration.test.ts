@@ -4,6 +4,7 @@ import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import * as commands from '../src/main/git/commands'
 import * as files from '../src/main/git/files'
+import { escapeIgnored, ignorePattern } from '../src/shared/gitignore'
 import { commitAt, git, isolateGit, makeRepo, write } from './helpers'
 
 let home = ''
@@ -222,9 +223,9 @@ describe('clean', () => {
 describe('ignore', () => {
   it('adds a pattern to .gitignore on a line of its own, once', async () => {
     const repo = await repoWithBase()
-    await files.ignore(repo, 'build/', 'gitignore')
+    expect(await files.ignore(repo, 'build/', 'gitignore')).toBe(true)
     expect(read(repo, '.gitignore')).toBe('build/\n')
-    await files.ignore(repo, 'build/', 'gitignore')
+    expect(await files.ignore(repo, 'build/', 'gitignore')).toBe(false)
     expect(read(repo, '.gitignore')).toBe('build/\n')
 
     write(repo, '.gitignore', 'node_modules')
@@ -249,6 +250,72 @@ describe('ignore', () => {
     expect(fs.existsSync(path.join(repo, '.gitignore'))).toBe(false)
     expect(await files.cleanPreview(repo, false)).toEqual([])
     expect(await files.cleanPreview(repo, true)).toEqual(['local.txt'])
+  })
+
+  const listed = async (repo: string): Promise<string[]> => (await commands.status(repo)).entries.map((entry) => entry.path)
+
+  it('takes just the chosen folder out of the list, at any depth', async () => {
+    const repo = await repoWithBase()
+    write(repo, 'bin/Debug/app.dll', 'x')
+    write(repo, 'bin/Debug/net8.0/app.pdb', 'x')
+    write(repo, 'bin/Release/app.dll', 'x')
+    write(repo, 'bin.txt', 'x')
+
+    await files.ignore(repo, ignorePattern('bin/Debug/'), 'gitignore')
+    expect(await listed(repo)).toEqual(['.gitignore', 'bin.txt', 'bin/Release/app.dll'])
+
+    await files.ignore(repo, ignorePattern('bin/'), 'gitignore')
+    expect(await listed(repo)).toEqual(['.gitignore', 'bin.txt'])
+    expect(read(repo, '.gitignore')).toBe('/bin/Debug/\n/bin/\n')
+  })
+
+  it('only ignores the folder at that place, not one of the same name elsewhere', async () => {
+    const repo = await repoWithBase()
+    write(repo, 'build/a.txt', 'x')
+    write(repo, 'tools/build/b.txt', 'x')
+    await files.ignore(repo, ignorePattern('build/'), 'gitignore')
+    expect(await listed(repo)).toEqual(['.gitignore', 'tools/build/b.txt'])
+  })
+
+  it('ignores folders whose names mean something to git', async () => {
+    const repo = await repoWithBase()
+    write(repo, 'app/[slug]/page.tsx', 'x')
+    write(repo, 'app/[slug]/deep/more.tsx', 'x')
+    write(repo, 'app/s/other.tsx', 'x')
+    write(repo, '#notes/a.txt', 'x')
+    write(repo, '!keep/a.txt', 'x')
+    write(repo, 'with space/a.txt', 'x')
+
+    for (const folder of ['app/[slug]/', '#notes/', '!keep/', 'with space/']) await files.ignore(repo, ignorePattern(folder), 'gitignore')
+    expect(await listed(repo)).toEqual(['.gitignore', 'app/s/other.tsx'])
+  })
+
+  it('ignores a file type that looks like a wildcard, and only that type', async () => {
+    const repo = await repoWithBase()
+    write(repo, 'backup.[old]', 'x')
+    write(repo, 'sub/more.[old]', 'x')
+    write(repo, 'keep.o', 'x')
+    await files.ignore(repo, `*${escapeIgnored('.[old]')}`, 'gitignore')
+    expect(await listed(repo)).toEqual(['.gitignore', 'keep.o'])
+  })
+
+  it('ignores a repository inside this one', async () => {
+    const repo = await repoWithBase()
+    write(repo, 'vendor/nested/a.txt', 'x')
+    await git(path.join(repo, 'vendor/nested'), 'init', '-q')
+    expect(await listed(repo)).toEqual(['vendor/nested/'])
+    await files.ignore(repo, ignorePattern('vendor/nested/'), 'gitignore')
+    expect(await listed(repo)).toEqual(['.gitignore'])
+  })
+
+  it('leaves tracked files in an ignored folder listed, and hides the new ones', async () => {
+    const repo = await repoWithBase()
+    write(repo, 'logs/app.log', 'one\n')
+    await commitAt(repo, 'logs', 1_700_000_100)
+    write(repo, 'logs/app.log', 'two\n')
+    write(repo, 'logs/new.log', 'x')
+    await files.ignore(repo, ignorePattern('logs/'), 'gitignore')
+    expect(await listed(repo)).toEqual(['logs/app.log', '.gitignore'])
   })
 })
 

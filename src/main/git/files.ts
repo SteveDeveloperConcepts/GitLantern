@@ -179,8 +179,8 @@ async function readIfExists(file: string): Promise<string> {
   }
 }
 
-/** Add a pattern to the repository's .gitignore, or to info/exclude for this copy only, unless that line is already there. */
-export async function ignore(repo: string, pattern: string, where: 'gitignore' | 'exclude'): Promise<void> {
+/** Add a pattern to the repository's .gitignore, or to info/exclude for this copy only. False when that line is already there. */
+export async function ignore(repo: string, pattern: string, where: 'gitignore' | 'exclude'): Promise<boolean> {
   if (!pattern.trim()) throw new Error('Enter a pattern to ignore')
   if (/[\r\n\0]/.test(pattern)) throw new Error('A pattern has to fit on one line')
   let file = path.join(repo, '.gitignore')
@@ -190,10 +190,11 @@ export async function ignore(repo: string, pattern: string, where: 'gitignore' |
     await fs.mkdir(path.dirname(file), { recursive: true })
   }
   const existing = await readIfExists(file)
-  if (existing.split(/\r?\n/).includes(pattern)) return
+  if (existing.split(/\r?\n/).includes(pattern)) return false
   // Keep the file's own line endings, and start on a new line.
   const newline = existing.includes('\r\n') ? '\r\n' : '\n'
   await fs.appendFile(file, `${existing && !existing.endsWith('\n') ? newline : ''}${pattern}${newline}`)
+  return true
 }
 
 const IDENTITY_KEYS = '^(user\\.(name|email)|(commit|tag)\\.gpgsign)$'

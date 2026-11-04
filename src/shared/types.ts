@@ -930,8 +930,8 @@ export interface GitLanternApi {
     cleanPreview(repo: string, ignored: boolean): Promise<string[]>
     /** Move these untracked (or ignored) files and folders to the trash. */
     clean(repo: string, paths: string[]): Promise<void>
-    /** Add a pattern to .gitignore, or to .git/info/exclude for this copy only. */
-    ignore(repo: string, pattern: string, where: 'gitignore' | 'exclude'): Promise<void>
+    /** Add a pattern to .gitignore, or to .git/info/exclude for this copy only. False when it was already there. */
+    ignore(repo: string, pattern: string, where: 'gitignore' | 'exclude'): Promise<boolean>
 
     identity(repo: string): Promise<{ local: Partial<GitIdentity>; global: GitIdentity }>
     setConfig(repo: string | null, key: GitConfigKey, value: string | null): Promise<void>

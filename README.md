@@ -51,7 +51,8 @@ installed, so your existing config, hooks, signing keys and credential managers 
   helper (`feat(auth): …`), and an **AI** button that writes the message from the staged changes, with
   Claude or any OpenAI-compatible service, Ollama included. Nothing is sent until you click it.
 - **Discard and clean up:** throw away a file's changes, or clean up untracked and ignored files. They
-  go to the trash, so a slip can be undone. Right-click a new file to add it to `.gitignore`.
+  go to the trash, so a slip can be undone. Right-click a new file to add it to `.gitignore`, or any
+  file to ignore a folder or sub-folder it's in.
 - **Stash:** put your uncommitted changes aside (new files included) with an optional note, and pop
   them back later. Look inside a stash, apply it, pop it or delete it.
 - **Patches:** save a commit, or your uncommitted changes, as a patch file, and apply one.

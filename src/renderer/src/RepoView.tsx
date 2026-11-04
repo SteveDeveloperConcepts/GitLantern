@@ -64,6 +64,7 @@ import { commitBranches } from './graph/branches'
 import { layoutGraph } from './graph/layout'
 import { refPills } from './graph/refs'
 import { linkedWithin, matchesSearch, searchTerms } from './graph/search'
+import { ignoreMenu, type IgnoreAction } from './ignoreMenu'
 import { rulesFor } from './issueLinks'
 import { readStored, writeStored } from './storage'
 import { addToast, toastDetail, type Toast } from './toasts'
@@ -615,18 +616,15 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
       ]
     })
 
-  const ignoreItems = (file: string): MenuItem[] => {
-    const slash = file.lastIndexOf('/')
-    const dot = file.lastIndexOf('.')
-    const ext = dot > slash + 1 ? file.slice(dot) : null
-    const ignore = (pattern: string, where: 'gitignore' | 'exclude') =>
-      void run('Ignoring', (path) => api.git.ignore(path, pattern, where), where === 'gitignore' ? `Added ${pattern} to .gitignore` : `Ignoring ${pattern} in this copy`)
-    return [
-      { key: 'ignore', label: 'Ignore this file', hint: '.gitignore', onSelect: () => ignore(`/${file}`, 'gitignore') },
-      ...(ext ? [{ key: 'ignore-ext', label: `Ignore all ${ext} files`, hint: '.gitignore', onSelect: () => ignore(`*${ext}`, 'gitignore') }] : []),
-      ...(slash > 0 ? [{ key: 'ignore-dir', label: `Ignore ${file.slice(0, slash + 1)}`, hint: '.gitignore', onSelect: () => ignore(`/${file.slice(0, slash + 1)}`, 'gitignore') }] : []),
-      { key: 'exclude', label: 'Ignore here only', hint: '.git/info/exclude', onSelect: () => ignore(`/${file}`, 'exclude') }
-    ]
+  const ignore: IgnoreAction = (pattern, where, covers) => {
+    // An ignored new file leaves the list, so its diff goes too. A tracked one stays, and the message says why.
+    if (diffTarget?.kind === 'worktree' && diffTarget.untracked && covers(diffTarget.path)) setDiffTarget(null)
+    const note = status?.entries.some((e) => !e.untracked && covers(e.path)) ? '. Files already tracked stay tracked.' : ''
+    void run('Ignoring', async (path) => {
+      const added = await api.git.ignore(path, pattern, where)
+      const done = !added ? `${pattern} was already ignored` : where === 'gitignore' ? `Added ${pattern} to .gitignore` : `Ignoring ${pattern} in this copy`
+      setMessage(`${done}${note}`)
+    })
   }
 
   const fileItems = (file: string, context: CustomActionContext, history: boolean): MenuItem[][] => [
@@ -650,7 +648,7 @@ export function RepoView({ repo, active, settings, accountCount, accountsVersion
   const openChangeMenu = (file: string, list: ChangeList, untracked: boolean, position: Position) => {
     const entry = status?.entries.find((e) => e.path === file)
     const groups = fileItems(file, { file }, !untracked)
-    if (untracked) groups.splice(1, 0, ignoreItems(file))
+    groups.splice(2, 0, ignoreMenu(file, untracked, ignore))
     if (entry?.conflicted && !api.appStore) {
       groups.splice(1, 0, [
         { key: 'mergetool', label: 'Resolve in merge tool', onSelect: () => void api.tools.mergeTool(repo.path, file).catch((err: unknown) => reportError(errorMessage(err))) }

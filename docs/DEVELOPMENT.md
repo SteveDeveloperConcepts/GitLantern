@@ -64,11 +64,13 @@ src/
   preload/index.ts      exposes a typed `window.api` through contextBridge
   shared/               types, IPC channel names, provider definitions (providers.ts),
                         remote-address parsing/conversion (remoteUrl.ts), resolving conflict markers
-                        (conflicts.ts) and partial patches for line staging (patch.ts), shared by every process
+                        (conflicts.ts), partial patches for line staging (patch.ts) and writing a path as a
+                        .gitignore pattern (gitignore.ts), shared by every process
   renderer/             React UI
     src/App.tsx              the window: tabs, workspaces, settings and the dialogs shared by every tab
     src/RepoView.tsx         one repository's tab: top bar, panels, graph, details and its dialogs
     src/branchMenus.ts       right-click menu contents for branches, commits and tags (pure, unit-tested)
+    src/ignoreMenu.ts        ignoring a file or folder from the Changes list (pure, unit-tested)
     src/splitDiff.ts         pairing lines for the side-by-side diff (pure, unit-tested)
     src/issueLinks.ts        issue numbers in messages → links (pure, unit-tested)
     src/review.ts            which diff line a review comment belongs on (pure, unit-tested)
