@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import * as commands from '../src/main/git/commands'
 import { runGit } from '../src/main/git/runGit'
@@ -48,6 +50,52 @@ describe('git commands against a real repository', () => {
     await commands.unstage(repo, ['hello world.txt'])
     status = await commands.status(repo)
     expect(status.entries.find((e) => e.path === 'hello world.txt')).toMatchObject({ index: null, worktree: 'M' })
+  })
+
+  it('stages and unstages everything at once with a dot', async () => {
+    const repo = await makeRepo()
+    write(repo, 'edited.txt', 'one\n')
+    write(repo, 'gone.txt', 'bye\n')
+    await commitAt(repo, 'base', 1_700_000_000)
+    write(repo, 'edited.txt', 'two\n')
+    fs.rmSync(path.join(repo, 'gone.txt'))
+    write(repo, 'new folder/new file.txt', 'hi\n')
+
+    await commands.stage(repo, ['.'])
+    expect((await commands.status(repo)).entries.map((e) => [e.path, e.index, e.worktree])).toEqual([
+      ['edited.txt', 'M', null],
+      ['gone.txt', 'D', null],
+      ['new folder/new file.txt', 'A', null]
+    ])
+
+    await commands.unstage(repo, ['.'])
+    expect((await commands.status(repo)).entries.map((e) => [e.path, e.index, e.worktree, e.untracked])).toEqual([
+      ['edited.txt', null, 'M', false],
+      ['gone.txt', null, 'D', false],
+      ['new folder/new file.txt', null, null, true]
+    ])
+  })
+
+  it('unstages a rename given both of its paths, as the row’s button sends them', async () => {
+    const repo = await makeRepo()
+    write(repo, 'old.txt', 'a file long enough for git to see the rename\n')
+    await commitAt(repo, 'base', 1_700_000_000)
+    await git(repo, 'mv', 'old.txt', 'new.txt')
+    await commands.unstage(repo, ['new.txt', 'old.txt'])
+    expect((await commands.status(repo)).entries.map((e) => [e.path, e.index, e.worktree, e.untracked])).toEqual([
+      ['old.txt', null, 'D', false],
+      ['new.txt', null, null, true]
+    ])
+  })
+
+  it('unstages everything with a dot before the first commit', async () => {
+    const repo = await makeRepo()
+    write(repo, 'a.txt', 'one\n')
+    write(repo, 'src/b.txt', 'two\n')
+    await commands.stage(repo, ['.'])
+    expect((await commands.status(repo)).entries.map((e) => e.index)).toEqual(['A', 'A'])
+    await commands.unstage(repo, ['.'])
+    expect((await commands.status(repo)).entries.map((e) => e.untracked)).toEqual([true, true])
   })
 
   it('produces diffs for the working tree, the index, commits and untracked files', async () => {

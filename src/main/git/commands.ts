@@ -455,15 +455,27 @@ export async function stage(repo: string, paths: string[]): Promise<void> {
   await runGit(['add', '-A', ...args], { cwd: repo, stdin })
 }
 
+/** What to unstage for "everything": restoring a conflicted file would end its conflict without a word, so with one around the others are named. */
+async function allButConflicts(repo: string): Promise<string[]> {
+  const { stdout } = await runGit(['ls-files', '--unmerged'], { cwd: repo })
+  if (!stdout.trim()) return ['.']
+  const staged = (await status(repo)).entries.filter((entry) => !entry.conflicted && entry.index !== null)
+  // A rename is staged at both of its paths.
+  return staged.flatMap((entry) => (entry.origPath ? [entry.path, entry.origPath] : [entry.path]))
+}
+
+/** `.` unstages everything, far quicker than naming thousands of files. */
 export async function unstage(repo: string, paths: string[]): Promise<void> {
   if (paths.length === 0) return
-  const { branch } = await status(repo)
-  if (branch.oid === null) {
+  const targets = paths.includes('.') ? await allButConflicts(repo) : paths
+  if (targets.length === 0) return
+  const head = await runGit(['rev-parse', '--verify', '--quiet', 'HEAD'], { cwd: repo, allowedExitCodes: [0, 1] })
+  if (head.exitCode !== 0) {
     // No HEAD to restore from yet: drop the paths from the index instead.
-    await runGit(['rm', '--cached', '-r', '-q', '--', ...paths], { cwd: repo })
+    await runGit(['rm', '--cached', '-r', '-q', '--', ...targets], { cwd: repo })
     return
   }
-  const { args, stdin } = pathspecStdin(paths)
+  const { args, stdin } = pathspecStdin(targets)
   await runGit(['restore', '--staged', ...args], { cwd: repo, stdin })
 }
 

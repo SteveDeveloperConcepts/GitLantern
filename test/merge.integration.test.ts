@@ -63,6 +63,43 @@ describe('merge and rebase', () => {
     expect(await head(repo)).toBe(before)
   })
 
+  it('keeps a conflict when everything is unstaged', async () => {
+    const repo = await divergedRepo()
+    await commands.merge(repo, 'feature')
+    write(repo, 'staged.txt', 'new\n')
+    await commands.stage(repo, ['staged.txt'])
+
+    await commands.unstage(repo, ['.'])
+
+    const status = await commands.status(repo)
+    expect(status.operation?.kind).toBe('merge')
+    expect(status.entries.find((e) => e.path === 'a.txt')?.conflicted).toBe(true)
+    expect(status.entries.find((e) => e.path === 'staged.txt')).toMatchObject({ index: null, untracked: true })
+  })
+
+  it('unstages both halves of a rename when a conflict is around', async () => {
+    const repo = await divergedRepo()
+    write(repo, 'old.txt', 'a file long enough for git to see the rename\n')
+    await commitAt(repo, 'old', 1_700_000_300)
+    await commands.merge(repo, 'feature')
+    await git(repo, 'mv', 'old.txt', 'new.txt')
+    expect((await commands.status(repo)).entries.find((e) => e.path === 'new.txt')).toMatchObject({ index: 'R', origPath: 'old.txt' })
+
+    await commands.unstage(repo, ['.'])
+
+    const { entries } = await commands.status(repo)
+    expect(entries.find((e) => e.path === 'a.txt')?.conflicted).toBe(true)
+    expect(entries.find((e) => e.path === 'new.txt')).toMatchObject({ index: null, untracked: true })
+    expect(entries.find((e) => e.path === 'old.txt')).toMatchObject({ index: null, worktree: 'D' })
+  })
+
+  it('has nothing to unstage when all that’s staged is in conflict', async () => {
+    const repo = await divergedRepo()
+    await commands.merge(repo, 'feature')
+    await commands.unstage(repo, ['.'])
+    expect((await commands.status(repo)).entries.find((e) => e.path === 'a.txt')?.conflicted).toBe(true)
+  })
+
   it('finishes a merge once the conflicts are resolved and staged', async () => {
     const repo = await divergedRepo()
     await commands.merge(repo, 'feature')

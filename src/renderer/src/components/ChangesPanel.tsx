@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { CommitTemplate, DiffTarget, RepoStatus, StatusEntry } from '../../../shared/types'
 import { OPERATION_NAMES } from '../branchMenus'
 import { errorMessage } from '../format'
@@ -23,7 +23,9 @@ interface Props {
   /** The working-copy diff currently shown, to highlight its file. */
   openTarget: DiffTarget | null
   onOpenDiff(target: DiffTarget): void
+  /** Files, or `.` for everything. */
   onStage(paths: string[]): void
+  /** Files, or `.` for everything that isn't in conflict. */
   onUnstage(paths: string[]): void
   /** Throw away unstaged changes to these files (asks first). */
   onDiscard(paths: string[]): void
@@ -73,12 +75,23 @@ export function ChangesPanel(props: Props) {
     setOriginal(null)
   }, [repoPath])
 
+  // Worked out once per status, not on every key press in the commit message.
+  const { unstaged, staged, unstagedItems, stagedItems, untracked, conflicted } = useMemo(() => {
+    const entries = status?.entries ?? []
+    const unstaged = entries.filter((e) => e.untracked || e.conflicted || e.worktree !== null)
+    const staged = entries.filter((e) => !e.conflicted && e.index !== null)
+    return {
+      unstaged,
+      staged,
+      unstagedItems: unstaged.map(unstagedItem),
+      stagedItems: staged.map(stagedItem),
+      untracked: new Set(unstaged.filter((e) => e.untracked).map((e) => e.path)),
+      conflicted: new Set(unstaged.filter((e) => e.conflicted).map((e) => e.path))
+    }
+  }, [status])
+
   if (!status) return <div className="panel-loading">Loading…</div>
 
-  const unstaged = status.entries.filter((e) => e.untracked || e.conflicted || e.worktree !== null)
-  const staged = status.entries.filter((e) => !e.conflicted && e.index !== null)
-  const untracked = new Set(unstaged.filter((e) => e.untracked).map((e) => e.path))
-  const conflicted = new Set(unstaged.filter((e) => e.conflicted).map((e) => e.path))
   const message = summary.trim() ? joinMessage(summary, description) : ''
   const messageChanged = original !== null && message !== joinMessage(splitMessage(original).summary, splitMessage(original).description)
   const canCommit = !busy && summary.trim().length > 0 && (amend ? staged.length > 0 || messageChanged : staged.length > 0)
@@ -161,13 +174,13 @@ export function ChangesPanel(props: Props) {
                 >
                   Discard all
                 </button>
-                <button className="link" disabled={busy} onClick={() => onStage(unstaged.map((e) => e.path))}>
+                <button className="link" disabled={busy} onClick={() => onStage(['.'])}>
                   Stage all
                 </button>
               </span>
             </header>
             <FileList
-              items={unstaged.map(unstagedItem)}
+              items={unstagedItems}
               selectedKey={selectedKey}
               onOpen={(item) =>
                 onOpenDiff({
@@ -194,16 +207,16 @@ export function ChangesPanel(props: Props) {
           <section className="changes-section">
             <header>
               <h3>Staged · {staged.length}</h3>
-              <button className="link" disabled={busy} onClick={() => onUnstage(staged.map((e) => e.path))}>
+              <button className="link" disabled={busy} onClick={() => onUnstage(['.'])}>
                 Unstage all
               </button>
             </header>
             <FileList
-              items={staged.map(stagedItem)}
+              items={stagedItems}
               selectedKey={selectedKey}
               onOpen={(item) => onOpenDiff({ kind: 'index', path: item.path })}
               onContextMenu={menuFor('staged')}
-              actions={[{ label: '−', title: 'Unstage', run: (item) => onUnstage([item.path]) }]}
+              actions={[{ label: '−', title: 'Unstage', run: (item) => onUnstage(item.origPath ? [item.path, item.origPath] : [item.path]) }]}
             />
           </section>
         )}

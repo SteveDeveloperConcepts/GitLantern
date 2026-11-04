@@ -71,6 +71,8 @@ src/
     src/RepoView.tsx         one repository's tab: top bar, panels, graph, details and its dialogs
     src/branchMenus.ts       right-click menu contents for branches, commits and tags (pure, unit-tested)
     src/ignoreMenu.ts        ignoring a file or folder from the Changes list (pure, unit-tested)
+    src/visibleRows.ts       which rows of a long list are in view (pure, unit-tested)
+    src/oneAtATime.ts        running a load one at a time, with one more after (pure, unit-tested)
     src/splitDiff.ts         pairing lines for the side-by-side diff (pure, unit-tested)
     src/issueLinks.ts        issue numbers in messages → links (pure, unit-tested)
     src/review.ts            which diff line a review comment belongs on (pure, unit-tested)
@@ -97,6 +99,14 @@ macos/                  GitLantern.xcodeproj, which builds the App Store version
 **Git.** Every operation shells out to the `git` CLI with machine-readable flags (`--porcelain=v2 -z`,
 custom `--format` strings with NUL/0x1F separators) and parses the output. Background `status` runs with
 `GIT_OPTIONAL_LOCKS=0`, so it never takes the index lock or retriggers the file watcher.
+
+**A lot of changed files.** Status names every file, so tens of thousands of entries are normal after a
+build. `FileList` draws only the rows in view of whatever scrolls it, at a fixed row height. `git status`
+takes most of a second at that size, so `useRepo` runs one at a time when files change: one per change
+piled up, and each threw away the last, so the list stood still until the changes stopped. A full refresh
+keeps what it found even if status alone came in meanwhile. Stage all and Unstage all send `.` instead of
+every path, which git matches far quicker, except that `unstage` names the paths when anything is in
+conflict, because `git restore --staged .` turns a conflicted file back into HEAD's version without a word.
 
 **Branch labels.** Git doesn't record which branch a commit was made on, so `graph/branches.ts` works
 it out in one pass over the log, newest first. A branch claims the commits on its first-parent line

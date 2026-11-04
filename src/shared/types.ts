@@ -806,7 +806,9 @@ export interface GitLanternApi {
     branches(repo: string): Promise<Branch[]>
     show(repo: string, hash: string): Promise<CommitDetail>
     diff(repo: string, target: DiffTarget): Promise<string>
+    /** Files, or `.` for everything. */
     stage(repo: string, paths: string[]): Promise<void>
+    /** Files, not folders, which would end any conflicts in them; or `.` for everything that isn't in conflict. */
     unstage(repo: string, paths: string[]): Promise<void>
     /** Throw away uncommitted changes to these files. Untracked ones go to the trash. */
     discard(repo: string, paths: string[]): Promise<void>

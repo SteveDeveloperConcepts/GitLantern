@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Branch, Commit, FlowConfig, LogFilter, RemoteInfo, RepoInfo, RepoStatus, Stash, Submodule, Tag, Worktree } from '../../shared/types'
 import { errorMessage } from './format'
+import { oneAtATime } from './oneAtATime'
 
 const api = window.api
 
@@ -34,69 +35,89 @@ export function useRepo(repo: RepoInfo | null, filter: LogFilter = {}): RepoData
   const [submodules, setSubmodules] = useState<Submodule[]>([])
   const [flow, setFlow] = useState<FlowConfig | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // Drop responses from requests that a newer refresh has superseded.
+  /** Numbers every load as it starts. */
   const generation = useRef(0)
-  /** Extras are loading, and whether another load was asked for meanwhile. */
-  const extras = useRef({ running: false, again: false })
+  /** The load whose status is on show: loads can finish in any order, and what's shown only moves on. */
+  const shownStatus = useRef(0)
+  // Drop responses from full loads that a newer one has superseded. Status alone doesn't supersede them:
+  // it comes in all the time while files change, and they'd never get to show the rest of what they found.
+  const fullGeneration = useRef(0)
   const { branch, path } = filter
 
   /**
    * Tags, worktrees, submodules and git-flow come in behind the rest: submodule status alone can
-   * take seconds, and nothing should wait for it. One load at a time; refreshes that ask meanwhile
-   * get one more load once it's done, not one each.
+   * take seconds, and nothing should wait for it.
    */
-  const loadExtras = useCallback((repoPath: string) => {
-    if (extras.current.running) {
-      extras.current.again = true
-      return
-    }
-    extras.current = { running: true, again: false }
-    void Promise.all([
-      orEmpty(api.git.tags(repoPath)),
-      orEmpty(api.git.worktrees(repoPath)),
-      orEmpty(api.git.submodules(repoPath)),
-      api.git.flowConfig(repoPath).catch(() => null)
-    ]).then(([nextTags, nextWorktrees, nextSubmodules, nextFlow]) => {
-      setTags(nextTags)
-      setWorktrees(nextWorktrees)
-      setSubmodules(nextSubmodules)
-      setFlow(nextFlow)
-      const again = extras.current.again
-      extras.current = { running: false, again: false }
-      if (again) loadExtras(repoPath)
-    })
+  const loadExtras = useMemo(
+    () =>
+      oneAtATime(async () => {
+        if (!repo) return
+        const [nextTags, nextWorktrees, nextSubmodules, nextFlow] = await Promise.all([
+          orEmpty(api.git.tags(repo.path)),
+          orEmpty(api.git.worktrees(repo.path)),
+          orEmpty(api.git.submodules(repo.path)),
+          api.git.flowConfig(repo.path).catch(() => null)
+        ])
+        setTags(nextTags)
+        setWorktrees(nextWorktrees)
+        setSubmodules(nextSubmodules)
+        setFlow(nextFlow)
+      }),
+    [repo]
+  )
+
+  const showStatus = useCallback((id: number, nextStatus: RepoStatus) => {
+    if (id < shownStatus.current) return
+    shownStatus.current = id
+    setStatus(nextStatus)
   }, [])
+
+  /**
+   * With a lot of changed files git status takes a while. Starting one per change would pile them up,
+   * and each would throw away the one before it, so the list wouldn't move until the changes stopped.
+   */
+  const loadStatus = useMemo(
+    () =>
+      oneAtATime(async () => {
+        if (!repo) return
+        const id = ++generation.current
+        try {
+          showStatus(id, await api.git.status(repo.path))
+          setError(null)
+        } catch (err) {
+          if (id === generation.current) setError(errorMessage(err))
+        }
+      }),
+    [repo, showStatus]
+  )
 
   const refresh = useCallback(
     async (statusOnly = false) => {
       if (!repo) return
+      if (statusOnly) return loadStatus()
       const id = ++generation.current
+      const fullId = ++fullGeneration.current
       try {
-        if (statusOnly) {
-          const nextStatus = await api.git.status(repo.path)
-          if (id === generation.current) setStatus(nextStatus)
-        } else {
-          loadExtras(repo.path)
-          const [nextStatus, nextCommits, nextBranches, nextRemotes, nextStashes] = await Promise.all([
-            api.git.status(repo.path),
-            api.git.log(repo.path, { ...(branch ? { branch } : {}), ...(path ? { path } : {}) }),
-            api.git.branches(repo.path),
-            api.remotes.list(repo.path),
-            api.git.stashes(repo.path)
-          ])
-          if (id !== generation.current) return
-          setStatus(nextStatus)
-          setCommits(nextCommits)
-          setBranches(nextBranches)
-          setRemotes(nextRemotes)
-          setStashes(nextStashes)
-        }
+        void loadExtras()
+        const [nextStatus, nextCommits, nextBranches, nextRemotes, nextStashes] = await Promise.all([
+          api.git.status(repo.path),
+          api.git.log(repo.path, { ...(branch ? { branch } : {}), ...(path ? { path } : {}) }),
+          api.git.branches(repo.path),
+          api.remotes.list(repo.path),
+          api.git.stashes(repo.path)
+        ])
+        if (fullId !== fullGeneration.current) return
+        showStatus(id, nextStatus)
+        setCommits(nextCommits)
+        setBranches(nextBranches)
+        setRemotes(nextRemotes)
+        setStashes(nextStashes)
         setError(null)
       } catch (err) {
-        if (id === generation.current) setError(errorMessage(err))
+        if (fullId === fullGeneration.current) setError(errorMessage(err))
       }
     },
-    [repo, branch, path, loadExtras]
+    [repo, branch, path, loadExtras, loadStatus, showStatus]
   )
 
   // A new repository starts from nothing; a new filter keeps what's shown until the history arrives.
