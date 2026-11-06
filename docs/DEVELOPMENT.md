@@ -33,6 +33,8 @@ src/
   main/                 Electron main process (Node)
     index.ts            window, single-instance lock, startup wiring (and settings.json carried over
                         from the "Git Steve" data folder, the app's old name)
+    menu.ts             the menu bar: Electron's standard menus, with Toggle Developer Tools only in a
+                        development run (pure, unit-tested)
     ipc.ts              IPC handlers: validate renderer input, only touch repos the user opened
     git/runGit.ts       spawn wrapper: env, exit codes, output limits, GitError; runGitRaw for bytes
     git/commands.ts     typed git operations (status, log, diff, stage, commit, fetch/pull/push, ...)
@@ -289,7 +291,8 @@ remotes screens), then built to match.
 
 **Security.** The renderer runs with `contextIsolation`, `sandbox` and no Node integration. A strict CSP is
 injected into production builds. Navigation and new windows are blocked. The main process re-validates
-every IPC argument.
+every IPC argument. Developer Tools open only in a development run (`yarn dev`, `yarn start`): packaged
+builds switch them off (`devTools` in `index.ts`) and leave them out of the View menu (`menu.ts`).
 
 ## Known gaps / next steps
 

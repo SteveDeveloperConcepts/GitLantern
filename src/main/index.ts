@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { app, BrowserWindow, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, Menu, nativeTheme, shell } from 'electron'
 import { AccountStore } from './accounts/store'
 import { setupAskPass, type AskPass } from './askpass'
 import { FolderAccess } from './folderAccess'
@@ -7,6 +7,7 @@ import { setAccountHosts } from './git/commands'
 import { bundledGitPath, resolveGitPath } from './git/resolveGit'
 import { configureGit } from './git/runGit'
 import { registerIpc } from './ipc'
+import { menuTemplate } from './menu'
 import { appStore } from './sandbox'
 import { SecretStore } from './secrets'
 import { adoptOldSettings, Settings } from './settings'
@@ -33,6 +34,8 @@ function createWindow(zoom: number): void {
       sandbox: true,
       nodeIntegration: false,
       spellcheck: false,
+      // Only a development run can open Developer Tools. The menu leaves them out to match (menu.ts).
+      devTools: !app.isPackaged,
       // Tells the preload script (window.api.appStore) that this is the Mac App Store build.
       additionalArguments: appStore ? ['--gitlantern-app-store'] : []
     }
@@ -69,6 +72,9 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   void app.whenReady().then(async () => {
+    // Before any window: this replaces the menu Electron sets by default, which has Toggle Developer Tools.
+    Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate({ platform: process.platform, packaged: app.isPackaged })))
+
     const userData = app.getPath('userData')
     adoptOldSettings(path.join(app.getPath('appData'), 'Git Steve'), path.join(userData, 'settings.json'))
     const settings = new Settings(path.join(userData, 'settings.json'))
