@@ -116,5 +116,5 @@ if (spawnSync('git', pushArgs, { stdio: 'inherit' }).status !== 0) {
 }
 
 const github = /github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/.exec(gitOrFail('remote', 'get-url', remote))?.[1]
-console.log(`\n✔ Pushed ${tag}. The Release workflow builds and publishes it in about 3 minutes.`)
+console.log(`\n✔ Pushed ${tag}. The Release workflow builds and publishes it in about 20 minutes.`)
 if (github) console.log(`  Progress: https://github.com/${github}/actions\n  Release:  https://github.com/${github}/releases/tag/${tag}`)

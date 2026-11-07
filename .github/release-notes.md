@@ -11,11 +11,11 @@
 
 GitLantern uses the Git installed on your computer. If `git --version` doesn't work in a terminal, install [Git](https://git-scm.com/downloads) first.
 
-Once it's installed, GitLantern looks for new versions itself. On Windows and in the AppImage it downloads them and installs them when you restart it. On a Mac, and with the .deb, it tells you when there's a new one to download.
+Once it's installed, GitLantern looks for new versions itself. On Windows, on a Mac and in the AppImage it downloads them and installs them when you restart it. With the .deb, it tells you when there's a new one to download.
+
+**On a Mac with GitLantern 0.8.1 or earlier,** install this version by hand once: open the disk image and drag GitLantern into Applications, replacing the old copy. Those versions can only tell you a new one is out. From this one on, GitLantern updates itself.
 
 ### Opening it the first time
 
-These builds aren't signed with a publisher certificate yet, so your system warns you once:
-
-- **Windows:** when SmartScreen says "Windows protected your PC", click **More info** → **Run anyway**.
-- **macOS:** drag GitLantern into Applications and open it. When macOS says it can't verify the app, click **Done**. Then open **System Settings → Privacy & Security**, scroll down and click **Open Anyway**.
+- **Windows:** the installer isn't signed with a publisher certificate yet, so Windows warns you once. When SmartScreen says "Windows protected your PC", click **More info** → **Run anyway**.
+- **macOS:** drag GitLantern into Applications and open it.

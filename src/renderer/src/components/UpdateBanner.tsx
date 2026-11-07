@@ -7,7 +7,10 @@ interface Props {
   onInstall(): void
 }
 
-/** A newer GitLantern: ready to install on restart (Windows), or to download from its release page (macOS). */
+/**
+ * A newer GitLantern: ready to install on restart (Windows, macOS and the AppImage), or to download from
+ * its release page (the Linux .deb).
+ */
 export function UpdateBanner({ update, busy, onLater, onInstall }: Props) {
   const ready = update.kind === 'ready'
   return (
@@ -19,7 +22,7 @@ export function UpdateBanner({ update, busy, onLater, onInstall }: Props) {
         <span>
           {ready
             ? 'It installs the next time you quit GitLantern. Restart now to start using it.'
-            : 'Download it from the release page, then drag it into Applications to replace this copy.'}
+            : 'Download it from the release page and install it to replace this copy.'}
         </span>
       </div>
       <button className="link" onClick={onLater}>

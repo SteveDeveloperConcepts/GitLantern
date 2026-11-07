@@ -6,7 +6,7 @@ or `corepack enable`), then run `yarn install` in the project folder.
 | Command | Builds | Run it on | Output in `dist/` |
 |---|---|---|---|
 | `yarn dist:win` | Windows installer to share directly (NSIS) | Windows | `GitLantern-Setup-<version>.exe` |
-| `yarn dist:mac` | macOS disk image to share directly | Mac | `GitLantern-<version>-<arch>.dmg` |
+| `yarn dist:mac` | macOS disk image and zip with an ad-hoc signature, to try on your own Mac (releases are signed by the Release workflow) | Mac | `GitLantern-<version>-<arch>.dmg`, `….zip` |
 | `yarn dist:linux` | Linux AppImage and Debian package | Linux | `GitLantern-<version>-x86_64.AppImage`, `gitlantern_<version>_amd64.deb` |
 | `yarn dist:msstore` | **Microsoft Store** packages, x64 and ARM64 | Windows 10 / 11 | `GitLantern-<version>-x64.appx`, `…-arm64.appx` |
 | `yarn dist:msstore-test` | The Store package, installable on your own PC for testing | Windows 11 | `GitLantern-<version>-x64-test.appx` |
@@ -35,6 +35,39 @@ commit with your release notes, and pushes the commit and tag together. The tag 
 workflow, which builds the Windows, macOS and Linux installers on GitHub's servers and publishes them. You
 don't need a Mac to ship the Mac version, or Linux to ship the Linux one.
 
+### One-time setup
+
+Mac updates only install if the app is signed with a Developer ID and notarised by Apple, so the Release
+workflow refuses to publish without these. A release that shipped unsigned could never update itself.
+
+**1. Get the certificate.** On your Mac, in Xcode, go to **Settings → Accounts → Manage Certificates** and add
+a **Developer ID Application** certificate, if you do not have one. Then open **Keychain Access**, find it
+under **My Certificates**, right-click it, and choose **Export**. Save it as a `.p12` file with a password.
+
+Turn the file into text and copy it:
+
+```bash
+base64 -i certificate.p12 | pbcopy
+```
+
+**2. Make an app-specific password.** At [account.apple.com](https://account.apple.com), open **Sign-In and
+Security**, then **App-Specific Passwords**. Apple uses this to notarise builds.
+
+**3. Add five repository secrets.** On GitHub, open this repository's **Settings → Secrets and variables →
+Actions** and add:
+
+| Secret | Value |
+| --- | --- |
+| `MAC_CERTIFICATE` | The text from step 1 |
+| `MAC_CERTIFICATE_PASSWORD` | The `.p12` password |
+| `APPLE_ID` | The email address of your Apple Developer account |
+| `APPLE_APP_SPECIFIC_PASSWORD` | The password from step 2 |
+| `APPLE_TEAM_ID` | Your Team ID, under Membership details on developer.apple.com |
+
+Delete the `.p12` file afterwards.
+
+### Publishing a release
+
 1. Commit and push the work you're releasing. Run `yarn typecheck` and `yarn test`.
 2. Run `yarn release` with the new version, then one quoted line for each change. Each line appears under
    **What's new** on the release page:
@@ -60,7 +93,8 @@ don't need a Mac to ship the Mac version, or Linux to ship the Linux one.
 3. Follow the **Release** workflow on the repository's **Actions** tab. `yarn release` prints the link. The
    workflow type-checks and tests on Windows, macOS and Linux, then builds:
    - `GitLantern-Setup-<version>.exe` for Windows
-   - `GitLantern-<version>-arm64.dmg` and `GitLantern-<version>-x64.dmg` for Apple silicon and Intel Macs
+   - `GitLantern-<version>-arm64.dmg` and `GitLantern-<version>-x64.dmg` for Apple silicon and Intel Macs,
+     signed with your Developer ID and notarised by Apple, and a `.zip` of each for Mac updates
    - `GitLantern-<version>-x86_64.AppImage` and `gitlantern_<version>_amd64.deb` for Linux
 
    It then publishes the release. The release notes contain:
@@ -68,7 +102,7 @@ don't need a Mac to ship the Mac version, or Linux to ship the Linux one.
    - the download notes from `.github/release-notes.md`
    - a link to every change since the last release
 
-   It takes about 3 minutes.
+   It takes about 20 minutes. Notarising the Mac apps can take a while.
 
 **If the build fails**, nothing is published. Delete the tag on GitHub and on your computer, replacing
 `<version>` with the version you released:
@@ -84,45 +118,54 @@ notes. `package.json` already has that version, so this time it only tags and pu
 Once a release is published, it can't be replaced this way. To change its notes, open the release on
 GitHub and click **Edit**.
 
-**Signing.** These builds have no publisher certificate: the Windows installer is unsigned, and the Mac app
-has only an ad-hoc signature, without which Apple silicon Macs won't open it at all. Users see a warning
-the first time they open either one, and the release notes explain how to get past it. To remove the
-warnings, build signed versions yourself (the notarised DMG below, or a Windows code-signing certificate)
-and replace the files on the release. If you replace the Windows installer, also replace `latest.yml` and
-its `.blockmap` with the ones from the same build. Installed copies check the installer against them and
-refuse one that doesn't match.
+**Signing.** The workflow signs the Mac apps with your Developer ID and has Apple notarise them, so they
+open without a warning and can update themselves. It stops if a secret is missing, and checks each app,
+and the one inside each `.zip`, with `codesign`, `spctl` and `stapler` before anything is published.
+
+`yarn dist:mac` gives the app an ad-hoc signature instead (`build/adhoc-mac.yml`), without which Apple
+silicon Macs won't open it at all. That's for trying a build on your own Mac: other Macs warn about it, and
+it can't install updates. To build a signed and notarised copy on your Mac, with the Developer ID
+certificate in your keychain:
+
+```bash
+yarn build
+APPLE_ID=you@example.com APPLE_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx APPLE_TEAM_ID=ABCDE12345 yarn electron-builder --mac
+```
+
+The Windows installer has no publisher certificate, so SmartScreen warns people the first time they run
+it, and the release notes explain how to get past it. Updates install without that warning. A code-signing
+certificate would remove it: add it to the workflow's Windows build through `CSC_LINK` and
+`CSC_KEY_PASSWORD`, the same way as the Mac one. If you replace the Windows installer on a release by hand
+instead, also replace `latest.yml` and its `.blockmap` with the ones from the same build. Installed copies
+check the installer against them and refuse one that doesn't match.
 
 ### How installed copies update
 
 GitLantern checks the latest GitHub release 10 seconds after it starts, then every 4 hours
 (`src/main/updater.ts`):
 
-- **Windows:** it downloads a newer version in the background and shows **Restart now**. If the user
-  doesn't restart, the new version installs the next time they quit GitLantern.
-- **macOS:** it only says a new version is out. **Download** opens the release page. macOS only installs
-  updates signed with a Developer ID, and these builds have an ad-hoc signature. See below for how to
-  turn on full updates.
+- **Windows, macOS and the Linux AppImage:** it downloads a newer version in the background and shows
+  **Restart now**. If the user doesn't restart, the new version installs the next time they quit
+  GitLantern. macOS only installs an update signed with the same Developer ID as the copy it replaces.
+- **The Linux .deb:** it only says a new version is out. **Download** opens the release page.
 - **Store copies and `yarn dev`:** these never check. The stores update their own copies.
 
 Copies of 0.4.1 and earlier don't check. People using those versions have to install the next one by
-hand.
+hand. Mac copies of 0.8.1 and earlier have only an ad-hoc signature, so they can't install a signed
+update: they say a new version is out, and their users install the first signed version by hand (the
+release notes tell them how). From then on, it updates itself.
 
 The checks read files that electron-builder writes next to the installers, and the workflow attaches
-them to the release: `latest.yml` (Windows), `latest-mac.yml`, and the `.blockmap` files, which let
-Windows download only what changed. Don't delete them from a release.
+them to the release: `latest.yml` (Windows), `latest-mac.yml`, `latest-linux.yml`, the Mac `.zip` files,
+which Mac updates install from, and the `.blockmap` files, which let Windows download only what changed.
+Don't delete them from a release.
 
 Every published release reaches everyone within a few hours, and you can't take it back from copies
 that have already updated. If a release is broken, publish a fixed one with a higher version.
 
-**Full updates on macOS.** Once you have a Developer ID certificate:
-
-1. Sign and notarise the Mac build in the Release workflow instead of using `build/adhoc-mac.yml`.
-2. Add `zip` to `mac.target` in `electron-builder.yml`. Mac updates install from the zip, not the DMG.
-   Add `dist/*.zip` to the files the workflow uploads.
-3. In `updateMode` in `src/main/updater.ts`, return `'install'` for `darwin` too.
-
-Copies with the ad-hoc signature can't install a signed update, so Mac users install the first signed
-version by hand. The notice tells them it's out.
+Mac updates can't be tried before a release, because they need two signed versions. The first real test
+is the second signed release: on a Mac running the first one, check that GitLantern says the new version
+is ready to install, and that **Restart now** installs it.
 
 ---
 
@@ -337,18 +380,3 @@ the exact source each was built from, are in `GitLantern.app/Contents/Resources/
 asks that whoever receives Git can get its source: keep a copy of the Git source tarball named there, for
 example attached to each GitHub release. Whether the App Store's terms are compatible with the GPL is
 disputed (the Free Software Foundation says they aren't), so get advice if that matters to you.
-
-### Outside the App Store: notarised DMG
-
-1. Join the [Apple Developer Program](https://developer.apple.com/programs/).
-2. In Xcode, go to **Settings → Accounts → Manage Certificates**, and add a **Developer ID Application**
-   certificate.
-3. Create an app-specific password at [account.apple.com](https://account.apple.com) (Sign-In and
-   Security). Your Team ID is under Membership details on developer.apple.com.
-4. Build with notarisation (electron-builder notarises automatically when these are set):
-
-   ```bash
-   APPLE_ID=you@example.com APPLE_APP_SPECIFIC_PASSWORD=xxxx-xxxx-xxxx-xxxx APPLE_TEAM_ID=ABCDE12345 yarn dist:mac
-   ```
-
-5. Attach the DMG to a GitHub release. It opens without the Gatekeeper warning.

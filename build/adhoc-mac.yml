@@ -1,8 +1,9 @@
-# Mac builds made without an Apple certificate, used by .github/workflows/release.yml:
-# `electron-builder --mac -c build/adhoc-mac.yml`. Apple silicon Macs won't open an app with no signature
-# at all, so it gets an ad-hoc one. The hardened runtime would make that ad-hoc build fail Electron's library
-# validation at launch.
+# Mac builds made without the Developer ID certificate, for trying a build on your own Mac: `yarn dist:mac`.
+# Apple silicon Macs won't open an app with no signature at all, so it gets an ad-hoc one. The hardened
+# runtime would make that ad-hoc build fail Electron's library validation at launch.
+# The Release workflow never uses this: a release has to be signed, or it could never update itself.
 extends: electron-builder.yml
 mac:
   identity: '-'
   hardenedRuntime: false
+  notarize: false

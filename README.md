@@ -140,9 +140,9 @@ installed, so your existing config, hooks, signing keys and credential managers 
 - **Custom actions:** add your own commands to the Tools menu, or to the menus of commits, branches and
   files (`${REPO}`, `${SHA}`, `${BRANCH}` and `${FILE}` are filled in). GitLantern asks once before a new
   command first runs.
-- **Updates:** on Windows and in the Linux AppImage, a new version downloads in the background and
-  installs when you restart GitLantern. On a Mac, and with the Linux .deb, GitLantern tells you when
-  there's a new version to download.
+- **Updates:** on Windows, on a Mac and in the Linux AppImage, a new version downloads in the background
+  and installs when you restart GitLantern. With the Linux .deb, GitLantern tells you when there's a new
+  version to download.
 - **Private by design:** no GitLantern account, no telemetry. It only talks to the network when Git does,
   when you ask it to check a token, list your repositories or pull requests, or write a commit message
   with AI, and to look for a new version on GitHub. That check sends nothing about you or your
@@ -233,13 +233,12 @@ rather than replacing it, so uninstall Git Steve afterwards. Your recent reposit
 across on the first start. Connected accounts don't (their tokens were encrypted for the old app), so
 connect them again under **Accounts**.
 
-**"Unknown publisher" warnings.** Preview builds aren't code-signed yet, so your system may warn you the
-first time you open the app:
+**"Unknown publisher" warning on Windows.** The Windows installer isn't code-signed yet, so SmartScreen
+may warn you the first time you run it: click **More info** → **Run anyway**. The Mac app is signed and
+notarised by Apple, so it opens without a warning.
 
-- **Windows (SmartScreen):** click **More info** → **Run anyway**.
-- **macOS (Gatekeeper):** open GitLantern once and click **Done** when macOS says it can't verify it. Then
-  go to **System Settings → Privacy & Security** and click **Open Anyway**. (On macOS 14 and earlier,
-  right-clicking the app and choosing **Open** also works.)
+**On a Mac with GitLantern 0.8.1 or earlier?** Those versions can only tell you a new one is out. Install
+the latest version by hand once, as above, and GitLantern updates itself from then on.
 
 ### Or build it yourself
 

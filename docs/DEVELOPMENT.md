@@ -16,7 +16,7 @@ The first `yarn dev` downloads the Electron binary.
 | `yarn start` | Run the production build |
 | `yarn typecheck` | Type-check the main process and the renderer |
 | `yarn test` | Unit and integration tests. The askpass round trip needs `yarn build` first. |
-| `yarn dist:win` / `dist:mac` / `dist:linux` | Installers via electron-builder (NSIS / DMG / AppImage and .deb) into `dist/`. Build each on its own system. |
+| `yarn dist:win` / `dist:mac` / `dist:linux` | Installers via electron-builder (NSIS / DMG and zip / AppImage and .deb) into `dist/`. Build each on its own system. `dist:mac` gives the app an ad-hoc signature: the Release workflow signs and notarises releases. |
 | `yarn screenshots` | Fresh `docs/screenshots/` from demo repositories (run `yarn build` first; see below) |
 | `yarn dist:msstore` / `dist:msstore-test` | Microsoft Store packages (AppX), or an unsigned one to install locally |
 | `yarn xcode` | Open `macos/GitLantern.xcodeproj`, which builds, runs and archives the Mac App Store version in Xcode |
@@ -61,7 +61,8 @@ src/
     ssh.ts              find / create / convert the user's SSH key, `ssh -T` connection tests
     secrets.ts          safeStorage-encrypted store (Keychain / DPAPI); no plaintext fallback
     watcher.ts          recursive fs.watch → "worktree" or "refs" change events
-    updater.ts          new versions from GitHub releases (electron-updater): installed on Windows, announced on macOS
+    updater.ts          new versions from GitHub releases (electron-updater): installed on Windows, macOS and in
+                        the AppImage, announced to the .deb (updateMode is unit-tested)
   askpass/index.ts      helper that git runs as GIT_ASKPASS / SSH_ASKPASS (plain Node, one file)
   preload/index.ts      exposes a typed `window.api` through contextBridge
   shared/               types, IPC channel names, provider definitions (providers.ts),
@@ -93,7 +94,8 @@ scripts/                `yarn release`, store-build preflight check, icon genera
                         build-mas-git.sh (the App Store version's Git)
 macos/                  GitLantern.xcodeproj, which builds the App Store version in Xcode: build-electron.sh
                         makes the Electron app, embed-electron.sh puts it in Xcode's app and signs it
-.github/workflows/      release.yml: a pushed v* tag builds the installers and publishes a GitHub release;
+.github/workflows/      release.yml: a pushed v* tag builds the installers, signs and notarises the Mac apps,
+                        and publishes a GitHub release;
                         mas-git.yml: builds the App Store version's Git, runs the tests with it, and
                         archives the app with Xcode (unsigned)
 ```
@@ -296,8 +298,9 @@ builds switch them off (`devTools` in `index.ts`) and leave them out of the View
 
 ## Known gaps / next steps
 
-- macOS: written to be cross-platform but only exercised on Windows so far. The DMG notarises when
-  the `APPLE_*` variables in RELEASING.md are set.
+- macOS: written to be cross-platform but only exercised on Windows so far. Releases are signed with a
+  Developer ID and notarised (RELEASING.md), but updating from one signed release to the next can only
+  be tried once there are two of them.
 - Mac App Store: the sandboxed build (bundled Git, security-scoped bookmarks, its own `.ssh` and
   `.gitconfig`, `src/main/sandbox.ts`) hasn't been run through App Review yet. How it differs is in
   RELEASING.md.

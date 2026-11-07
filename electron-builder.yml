@@ -48,12 +48,16 @@ appx:
   artifactName: ${productName}-${version}-${arch}.${ext}
 
 mac:
+  # The disk image is what people download. Updates install from the zip.
   target:
     - dmg
+    - zip
   category: public.app-category.developer-tools
-  hardenedRuntime: true
-dmg:
   artifactName: GitLantern-${version}-${arch}.${ext}
+  # Signed with a Developer ID and notarised by the Release workflow (docs/RELEASING.md).
+  # electron-builder notarises when APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID are set.
+  # Builds without the certificate use build/adhoc-mac.yml.
+  hardenedRuntime: true
 
 # Linux: an AppImage (runs anywhere, updates itself) and a .deb for Debian and Ubuntu. `yarn dist:linux`.
 linux:

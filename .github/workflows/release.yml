@@ -19,10 +19,9 @@ jobs:
           - name: Windows
             os: windows-latest
             dist: yarn dist:win --x64
-          # No Apple certificate yet: build/adhoc-mac.yml gives the app an ad-hoc signature instead.
+          # Built, signed and notarised in its own steps below.
           - name: macOS
             os: macos-latest
-            dist: yarn dist:mac --x64 --arm64 -c build/adhoc-mac.yml
           - name: Linux
             os: ubuntu-latest
             dist: yarn dist:linux --x64
@@ -50,14 +49,62 @@ jobs:
       - run: yarn test
 
       - name: Build installers
+        if: runner.os != 'macOS'
         shell: bash
         run: ${{ matrix.dist }} --publish never
 
-      - name: Check the app signatures
+      # A Mac build without the certificate could never update itself, so it must not be released.
+      # forceCodeSigning stops the build if the certificate isn't a Developer ID Application one, instead
+      # of leaving the apps unsigned.
+      - name: Build, sign, and notarise the Mac apps
         if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.MAC_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          for app in dist/mac*/*.app; do
-            codesign --verify --deep --strict --verbose=2 "$app"
+          missing=0
+          for pair in MAC_CERTIFICATE:CSC_LINK MAC_CERTIFICATE_PASSWORD:CSC_KEY_PASSWORD APPLE_ID:APPLE_ID \
+            APPLE_APP_SPECIFIC_PASSWORD:APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID:APPLE_TEAM_ID; do
+            variable=${pair#*:}
+            if [ -z "${!variable}" ]; then
+              echo "::error::The repository secret ${pair%%:*} is missing. See 'One-time setup' in docs/RELEASING.md."
+              missing=1
+            fi
+          done
+          [ "$missing" = 0 ] || exit 1
+          yarn build
+          yarn electron-builder --mac --x64 --arm64 --publish never -c.forceCodeSigning=true
+
+      # Gatekeeper only opens a notarised app, and macOS only installs an update signed like the copy it
+      # replaces. Updates install from the zip, so the app inside it gets the same checks.
+      - name: Check the Mac apps are signed, notarised, and complete
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          check() {
+            codesign --verify --deep --strict --verbose=2 "$1"
+            spctl --assess --type execute --verbose=2 "$1"
+            xcrun stapler validate "$1"
+          }
+          version=$(node -p "require('./package.json').version")
+          # Copies of 0.8.1 and earlier only read the version, to say there's a new one.
+          grep -Fx "version: $version" dist/latest-mac.yml ||
+            { echo "::error::latest-mac.yml doesn't give the version as $version"; exit 1; }
+          for dir in mac:x64 mac-arm64:arm64; do
+            arch=${dir##*:}
+            app="dist/${dir%%:*}/GitLantern.app"
+            check "$app"
+            # git runs the askpass helper as a plain Node script, from outside the asar archive.
+            ls "$app/Contents/Resources/app.asar.unpacked/out/main/askpass.js"
+            zip="GitLantern-$version-$arch.zip"
+            ditto -x -k "dist/$zip" "$RUNNER_TEMP/$arch"
+            check "$RUNNER_TEMP/$arch/GitLantern.app"
+            # Signed copies download the zip that latest-mac.yml names for their processor.
+            grep -F "url: $zip" dist/latest-mac.yml || { echo "::error::latest-mac.yml doesn't list $zip"; exit 1; }
           done
 
       # Installed copies read latest.yml (Windows), latest-mac.yml or latest-linux.yml to find a new
@@ -73,6 +120,7 @@ jobs:
           path: |
             dist/*.exe
             dist/*.dmg
+            dist/*.zip
             dist/*.AppImage
             dist/*.deb
             dist/*.blockmap

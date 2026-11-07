@@ -4,23 +4,23 @@ import { Events } from '../shared/ipc'
 import type { UpdateState } from '../shared/types'
 
 // Installed copies find new versions through `publish` in electron-builder.yml; this is only for the
-// release page the macOS notice opens.
+// release page the .deb's notice opens.
 const RELEASES = 'https://github.com/SteveDeveloperConcepts/GitLantern/releases'
 const FIRST_CHECK_MS = 10_000
 const CHECK_EVERY_MS = 4 * 60 * 60 * 1000
 
 /**
  * How this copy gets new versions from GitHub releases:
- * - `install`: download in the background, install on restart (the Windows installer).
- * - `notify`: say a new version is out and link to it. macOS only installs updates signed with a
- *   Developer ID, and the Mac builds have only an ad-hoc signature. A Linux .deb is updated through
- *   its package, so it's told the same way.
+ * - `install`: download in the background, install on restart. The Windows installer, the Mac app and
+ *   the AppImage. macOS only installs an update signed with the same Developer ID as the running copy,
+ *   which the Release workflow insists on. Mac copies of 0.8.1 and earlier have only an ad-hoc
+ *   signature and announce new versions instead, so their users install the first signed one by hand.
+ * - `notify`: say a new version is out and link to it. A Linux .deb is updated through its package.
  * - null: none. Development runs, and Store copies, which their store updates.
  */
 export function updateMode(env: { packaged: boolean; platform: NodeJS.Platform; store: boolean; appImage?: boolean }): 'install' | 'notify' | null {
   if (!env.packaged || env.store) return null
-  if (env.platform === 'win32') return 'install'
-  if (env.platform === 'darwin') return 'notify'
+  if (env.platform === 'win32' || env.platform === 'darwin') return 'install'
   // An AppImage replaces itself, like the Windows installer.
   if (env.platform === 'linux') return env.appImage ? 'install' : 'notify'
   return null
@@ -81,6 +81,7 @@ export function setupUpdater(getWindow: () => BrowserWindow | null): Updater {
     state: () => current,
     install: () => {
       // Silent, then start the new version: the installer already knows where GitLantern is installed.
+      // On macOS the new app replaces this one and starts, whatever the arguments.
       if (current?.kind === 'ready') autoUpdater.quitAndInstall(true, true)
       else if (current?.kind === 'available') void shell.openExternal(`${RELEASES}/tag/v${current.version}`)
     }
