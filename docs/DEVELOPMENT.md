@@ -49,6 +49,8 @@ src/
     git/parsers.ts      pure parsers for porcelain v2 status, log, for-each-ref, name-status
     commandLog.ts       the last 500 git commands, for the command log
     settings.ts         settings.json: recent repos, and the Settings screen's values (checked by sanitizeSettings)
+    shellPath.ts        the PATH every program GitLantern starts gets: the usual install folders, then the
+                        login shell's own PATH in front (macOS and Linux)
     tools.ts            finding and starting editors and terminals, difftool/mergetool, custom actions
     ai.ts               commit messages from the staged diff (Anthropic or OpenAI-compatible APIs)
     askpass/            credential prompts: socket server, trampoline script, prompt parsing, glue to the UI
@@ -103,6 +105,15 @@ macos/                  GitLantern.xcodeproj, which builds the App Store version
 **Git.** Every operation shells out to the `git` CLI with machine-readable flags (`--porcelain=v2 -z`,
 custom `--format` strings with NUL/0x1F separators) and parses the output. Background `status` runs with
 `GIT_OPTIONAL_LOCKS=0`, so it never takes the index lock or retriggers the file watcher.
+
+**PATH.** An app opened from the Dock, Finder or a desktop launcher gets a short PATH without the folders
+the user's shell startup files add, yet git starts git-lfs, gpg, credential helpers and hook programs
+(often node) from PATH. At startup `shellPath.ts` adds the usual install folders to `process.env.PATH` at
+once, then runs the login shell (`-i -l -c`, in a session of its own, 10 seconds at most) and puts the
+PATH it prints in front. The window doesn't wait for the shell. Relative entries are dropped, so nothing
+is found in a repository's own folder. Windows apps get the full PATH, and the Mac App Store build runs
+its own Git and Git LFS, so neither does this. A missing git-lfs is explained by `explainFailure` in
+`runGit.ts`, since git itself only says "the remote end hung up unexpectedly".
 
 **A lot of changed files.** Status names every file, so tens of thousands of entries are normal after a
 build. `FileList` draws only the rows in view of whatever scrolls it, at a fixed row height. `git status`

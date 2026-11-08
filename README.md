@@ -371,6 +371,13 @@ Install Git (see above) and restart GitLantern. If Git is somewhere unusual, pic
 **Settings → Git → Git program → Choose…** (or add `"gitPath": "C:\\path\\to\\git.exe"` to
 `settings.json`), then restart.
 
+**"GitLantern couldn't find the git-lfs program"**<br>
+The repository keeps some files in Git LFS. Install it (`brew install git-lfs` on a Mac, `git-lfs` from
+your package manager on Linux; Git for Windows includes it) and try again. On macOS and Linux, GitLantern
+uses the same `PATH` as a terminal: it asks your login shell for it when it starts, and also looks in the
+usual install folders (Homebrew, MacPorts, `~/.local/bin`, Nix). If you install Git LFS somewhere else
+and add that folder to your shell's `PATH`, restart GitLantern.
+
 **I saved a wrong password**<br>
 Go to **Branches → Forget all**, then retry. GitLantern will ask again.
 

@@ -11,6 +11,7 @@ import { menuTemplate } from './menu'
 import { appStore } from './sandbox'
 import { SecretStore } from './secrets'
 import { adoptOldSettings, Settings } from './settings'
+import { adoptShellPath } from './shellPath'
 import { resolveSshTool, sshEnv } from './ssh'
 import { setupUpdater } from './updater'
 
@@ -75,6 +76,8 @@ if (!app.requestSingleInstanceLock()) {
     // Before any window: this replaces the menu Electron sets by default, which has Toggle Developer Tools.
     Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate({ platform: process.platform, packaged: app.isPackaged })))
 
+    // Not awaited: the window needn't wait for the user's shell, and git has the usual folders meanwhile.
+    void adoptShellPath()
     const userData = app.getPath('userData')
     adoptOldSettings(path.join(app.getPath('appData'), 'Git Steve'), path.join(userData, 'settings.json'))
     const settings = new Settings(path.join(userData, 'settings.json'))

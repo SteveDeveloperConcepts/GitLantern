@@ -72,6 +72,17 @@ const DEFAULT_MAX_OUTPUT = 64 * 1024 * 1024
 // Machine-readable output regardless of the user's config.
 const GLOBAL_ARGS = ['-c', 'color.ui=false', '-c', 'core.quotepath=false']
 
+/**
+ * What to say instead of git's own words, for failures they don't explain. git-lfs missing ends a clone
+ * or pull with "the remote end hung up unexpectedly" (sh says "command not found", dash "not found").
+ */
+export function explainFailure(stderr: string): string | undefined {
+  if (/\bgit-lfs: (command )?not found/.test(stderr)) {
+    return 'This repository uses Git LFS, but GitLantern couldn’t find the git-lfs program. Install Git LFS (https://git-lfs.com) and try again.'
+  }
+  return undefined
+}
+
 export async function runGit(args: string[], options: GitOptions): Promise<GitResult> {
   const result = await runGitRaw(args, options)
   return { ...result, stdout: result.stdout.toString('utf8') }
@@ -137,7 +148,7 @@ export function runGitRaw(args: string[], options: GitOptions): Promise<GitRawRe
         logged(code, '')
         resolve({ stdout: out, stderr: err, exitCode: code })
       } else {
-        fail(new GitError(args, code, err))
+        fail(new GitError(args, code, err, explainFailure(err)))
       }
     })
 
